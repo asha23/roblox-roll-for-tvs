@@ -1,6 +1,6 @@
 # Roll For TVs
 
-Repo: <https://github.com/asha23/roblox-roll-for-tvs> (private)
+Repo: <https://github.com/asha23/roblox-roll-for-tvs>
 
 Code lives in `src/` as real `.luau` files. Rojo syncs them into Roblox Studio, so you edit
 in your editor and Studio updates live. Studio is only for building the map, testing, and publishing.
@@ -84,16 +84,17 @@ Both are working examples, safe to gut and replace.
 
 ## CI
 
-A GitHub Actions workflow sits at `.github/workflows/ci.yml`, untracked — pushing it needs a
-token scope the local `gh` login doesn't have. Enable it with:
+[.github/workflows/ci.yml](.github/workflows/ci.yml) format-checks with StyLua, lints with
+Selene, runs `rojo build`, and uploads the resulting `.rbxlx` as an artifact — on every push
+to `main` and every PR.
+
+GitHub blocks pushing workflow files unless your token carries the `workflow` scope. If a
+push is rejected with *"refusing to allow an OAuth App to create or update workflow"*:
 
 ```sh
-gh auth refresh -s workflow
-git add .github && git commit -m "Add CI workflow" && git push
+gh auth refresh -s workflow   # opens a browser to re-authorise
+git push
 ```
-
-It formats-checks, lints, and builds a place file on every push and PR, uploading the
-`.rbxlx` as a build artifact.
 
 ## Notes
 
