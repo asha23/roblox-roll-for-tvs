@@ -34,6 +34,14 @@ local function part(build: Build, name: string, size: Vector3, position: Vector3
 	return instance
 end
 
+-- A Roblox cylinder's length runs along its local X axis, with the flat circular caps
+-- facing +/-X. Naming the three orientations we actually use, because passing raw Euler
+-- angles is exactly how every cylinder in this file ended up pointing the wrong way once:
+-- dials lay flat facing the ceiling and the rollable TV's drum stood up like a pillar.
+local CAPS_FACING_Z = CFrame.Angles(0, math.pi / 2, 0) -- a dial you look at head-on
+local CAPS_FACING_Y = CFrame.Angles(0, 0, math.pi / 2) -- a puck lying flat on the floor
+local LENGTH_ACROSS_X = CFrame.identity -- a drum lying across the width
+
 local function cylinder(build: Build, name: string, size: Vector3, cf: CFrame): Part
 	local instance = part(build, name, size, Vector3.zero)
 	instance.Shape = Enum.PartType.Cylinder
@@ -119,7 +127,7 @@ function builders.portable(build: Build)
 			`Dial{index}`,
 			Vector3.new(0.22, 0.5, 0.5),
 			CFrame.new(bodyW / 2 - 0.5, centreY + 0.6 - (index - 1) * 0.9, bodyD / 2)
-				* CFrame.Angles(0, 0, math.rad(90))
+				* CAPS_FACING_Z
 		)
 		dial.Color = Color3.fromRGB(40, 40, 44)
 	end
@@ -152,7 +160,7 @@ function builders.crt(build: Build)
 			`Dial{index}`,
 			Vector3.new(0.2, 0.42, 0.42),
 			CFrame.new(bodyW / 2 - 0.55, centreY - bodyH * 0.28 + (index - 1) * 0.7, bodyD / 2)
-				* CFrame.Angles(0, 0, math.rad(90))
+				* CAPS_FACING_Z
 		)
 		dial.Color = Color3.fromRGB(36, 36, 40)
 	end
@@ -198,7 +206,7 @@ function builders.console(build: Build)
 			CFrame.new(cabinetW * 0.3, centreY - cabinetH * 0.34, cabinetD / 2)
 				+ Vector3.new((index - 1.5) * 0.9, 0, 0)
 		)
-		dial.CFrame = dial.CFrame * CFrame.Angles(0, 0, math.rad(90))
+		dial.CFrame = dial.CFrame * CAPS_FACING_Z
 		dial.Color = Color3.fromRGB(214, 190, 140)
 		dial.Material = Enum.Material.Metal
 	end
@@ -285,7 +293,7 @@ function builders.projector(build: Build)
 		build,
 		"Lens",
 		Vector3.new(0.5, 0.9, 0.9),
-		CFrame.new(0, 1.2, boxZ - 1.7) * CFrame.Angles(0, 0, math.rad(90))
+		CFrame.new(0, 1.2, boxZ - 1.7) * CAPS_FACING_Z
 	)
 	lens.Color = build.Tv.Screen
 	lens.Material = Enum.Material.Neon
@@ -312,7 +320,7 @@ function builders.rollable(build: Build)
 		build,
 		"Drum",
 		Vector3.new(w + 0.6, drumHeight, drumHeight),
-		CFrame.new(0, drumHeight / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+		CFrame.new(0, drumHeight / 2, 0) * LENGTH_ACROSS_X
 	)
 	drum.Material = Enum.Material.Brick
 
@@ -387,7 +395,7 @@ function builders.holo(build: Build)
 		build,
 		"Emitter",
 		Vector3.new(0.5, w * 0.42, w * 0.42),
-		CFrame.new(0, 0.25, 0) * CFrame.Angles(0, 0, math.rad(90))
+		CFrame.new(0, 0.25, 0) * CAPS_FACING_Y
 	)
 	puck.Material = Enum.Material.Metal
 
@@ -395,7 +403,7 @@ function builders.holo(build: Build)
 		build,
 		"EmitterRing",
 		Vector3.new(0.16, w * 0.3, w * 0.3),
-		CFrame.new(0, 0.55, 0) * CFrame.Angles(0, 0, math.rad(90))
+		CFrame.new(0, 0.55, 0) * CAPS_FACING_Y
 	)
 	ring.Color = build.Tv.Screen
 	ring.Material = Enum.Material.Neon

@@ -159,6 +159,20 @@ for score = 1, 30 do
 	check(`score {score} style is declared`, TvCatalog.Styles[tv.Style] == true, `got "{tv.Style}"`)
 end
 
+print("== cylinders use the named orientations ==")
+-- A Roblox cylinder's length runs along local X. Every cylinder in TvBuilder was once
+-- rotated with the same raw CFrame.Angles(0, 0, rad(90)), which left the dials facing the
+-- ceiling and the rollable TV's drum standing up like a pillar. The three named constants
+-- encode which way is which; a bare rad(90) means someone has gone back to guessing.
+for _, name in { "CAPS_FACING_Z", "CAPS_FACING_Y", "LENGTH_ACROSS_X" } do
+	check(`{name} is defined`, builderSource:find(`local {name} =`) ~= nil)
+end
+check(
+	"no raw 90-degree rotations left in TvBuilder",
+	builderSource:find("math%.rad%(90%)") == nil,
+	"use CAPS_FACING_Z / CAPS_FACING_Y / LENGTH_ACROSS_X instead"
+)
+
 print("== die lands on the face the server rolled ==")
 -- The real risk in DiceController: LandOrientation[v] must actually rotate face v to +Y.
 -- Applying the matrix to FaceNormal[v] should give (0, 1, 0) for every value.
