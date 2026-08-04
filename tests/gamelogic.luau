@@ -7,12 +7,38 @@ local process = require("@lune/process")
 
 local ROOT = "src/shared/"
 
+-- Enough of the Roblox API for the pure-data modules to load. CFrame.Angles returns a real
+-- 3x3 rotation matrix so the die-landing maths can actually be checked, not just eyeballed.
 local PRELUDE = [[
 local Color3 = {
 	fromRGB = function(r, g, b) return { R = r, G = g, B = b } end,
 	new = function(r, g, b) return { R = r, G = g, B = b } end,
 }
 local Vector3 = { new = function(x, y, z) return { X = x, Y = y, Z = z } end }
+local Enum = { NormalId = {
+	Top = "Top", Bottom = "Bottom", Front = "Front",
+	Back = "Back", Left = "Left", Right = "Right",
+} }
+local CFrame = {}
+CFrame.Angles = function(rx, ry, rz)
+	-- Right-handed rotation matrices, applied X then Y then Z, matching CFrame.Angles.
+	local function mul(a, b)
+		local out = {}
+		for i = 1, 3 do
+			out[i] = {}
+			for j = 1, 3 do
+				out[i][j] = a[i][1] * b[1][j] + a[i][2] * b[2][j] + a[i][3] * b[3][j]
+			end
+		end
+		return out
+	end
+	local cx, sx, cy, sy, cz, sz =
+		math.cos(rx), math.sin(rx), math.cos(ry), math.sin(ry), math.cos(rz), math.sin(rz)
+	local mx = { { 1, 0, 0 }, { 0, cx, -sx }, { 0, sx, cx } }
+	local my = { { cy, 0, sy }, { 0, 1, 0 }, { -sy, 0, cy } }
+	local mz = { { cz, -sz, 0 }, { sz, cz, 0 }, { 0, 0, 1 } }
+	return { matrix = mul(mul(mx, my), mz) }
+end
 ]]
 
 local function load(name: string)
@@ -22,6 +48,7 @@ end
 
 local DiceTiers = load("DiceTiers")
 local TvCatalog = load("TvCatalog")
+local DiceGeometry = load("DiceGeometry")
 
 local failures = 0
 local checks = 0
@@ -108,6 +135,100 @@ for score = 2, 30 do
 	local previous = TvCatalog.screenSize(score - 1)
 	local current = TvCatalog.screenSize(score)
 	check(`screen {score} wider and taller`, current.X > previous.X and current.Y > previous.Y)
+end
+
+print("== TV styles all have a builder ==")
+-- TvBuilder itself needs too much of the Roblox API to load here, so scrape the style
+-- names it defines straight out of the source. Crude, but it catches the real mistake:
+-- adding a style to the catalog and forgetting the builder, which ships a plain box.
+local builderSource = fs.readFile(ROOT .. "TvBuilder.luau")
+local builderStyles: { [string]: boolean } = {}
+for name in builderSource:gmatch("function builders%.([%a_]+)") do
+	builderStyles[name] = true
+end
+check("scraped some builders", next(builderStyles) ~= nil)
+for style in TvCatalog.Styles do
+	check(`style "{style}" has a builder`, builderStyles[style] == true)
+end
+for style in builderStyles do
+	check(`builder "{style}" is a declared style`, TvCatalog.Styles[style] == true)
+end
+for score = 1, 30 do
+	local tv = TvCatalog.Tvs[score]
+	check(`score {score} style is declared`, TvCatalog.Styles[tv.Style] == true, `got "{tv.Style}"`)
+end
+
+print("== die lands on the face the server rolled ==")
+-- The real risk in DiceController: LandOrientation[v] must actually rotate face v to +Y.
+-- Applying the matrix to FaceNormal[v] should give (0, 1, 0) for every value.
+local function rotate(cf, v)
+	local m = cf.matrix
+	return {
+		X = m[1][1] * v.X + m[1][2] * v.Y + m[1][3] * v.Z,
+		Y = m[2][1] * v.X + m[2][2] * v.Y + m[2][3] * v.Z,
+		Z = m[3][1] * v.X + m[3][2] * v.Y + m[3][3] * v.Z,
+	}
+end
+
+for value = 1, 6 do
+	local normal = DiceGeometry.FaceNormal[value]
+	local oriented = rotate(DiceGeometry.LandOrientation[value], normal)
+	check(
+		`face {value} ends up pointing at +Y`,
+		math.abs(oriented.Y - 1) < 1e-6
+			and math.abs(oriented.X) < 1e-6
+			and math.abs(oriented.Z) < 1e-6,
+		`got ({string.format("%.3f, %.3f, %.3f", oriented.X, oriented.Y, oriented.Z)})`
+	)
+end
+
+print("== die is a real die ==")
+for value = 1, 6 do
+	check(`face {value} has a normal`, DiceGeometry.FaceNormal[value] ~= nil)
+	check(`face {value} has a surface`, DiceGeometry.FaceId[value] ~= nil)
+	check(
+		`face {value} has {value} pips`,
+		#DiceGeometry.Pips[value] == value,
+		`got {#DiceGeometry.Pips[value]}`
+	)
+end
+
+-- On a real die, opposite faces sum to 7 and their normals are exact opposites.
+for value = 1, 6 do
+	local opposite = 7 - value
+	local a, b = DiceGeometry.FaceNormal[value], DiceGeometry.FaceNormal[opposite]
+	check(`face {value} is opposite face {opposite}`, a.X == -b.X and a.Y == -b.Y and a.Z == -b.Z)
+end
+
+-- All six normals must be distinct, or two numbers share a face.
+local seenNormals: { [string]: number } = {}
+for value = 1, 6 do
+	local n = DiceGeometry.FaceNormal[value]
+	local key = `{n.X},{n.Y},{n.Z}`
+	check(
+		`face {value} normal is unique`,
+		seenNormals[key] == nil,
+		`clashes with {seenNormals[key]}`
+	)
+	seenNormals[key] = value
+end
+
+local seenFaces: { [string]: number } = {}
+for value = 1, 6 do
+	local id = DiceGeometry.FaceId[value]
+	check(`face {value} surface is unique`, seenFaces[id] == nil, `clashes with {seenFaces[id]}`)
+	seenFaces[id] = value
+end
+
+-- Pips must sit inside the face, or they render clipped at the edge.
+for value = 1, 6 do
+	for index, pip in DiceGeometry.Pips[value] do
+		check(
+			`face {value} pip {index} is inside the face`,
+			pip[1] > 0.1 and pip[1] < 0.9 and pip[2] > 0.1 and pip[2] < 0.9,
+			`at {pip[1]},{pip[2]}`
+		)
+	end
 end
 
 print(`\n{checks - failures}/{checks} checks passed`)

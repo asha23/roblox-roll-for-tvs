@@ -55,12 +55,13 @@ podiums in front of you. In the Output window (**View → Output**):
 
 ```
 [Server] Started 3 service(s).
-[Client] Started 2 controller(s).
+[Client] Started 3 controller(s).
 ```
 
-Click **ROLL** (or press **R**). A card shows the dice spinning, lands on your number, and
-names the TV you won — and your podium's screen changes colour and grows to match. Keep rolling
-until you hit a 6 and the upgrade prompt appears.
+Click **ROLL** (or press **R**). A 3D die is thrown out in front of you, tumbles through the
+air, and lands showing your number. Only then does the result card name the TV you won — and
+your podium builds that actual telly. Keep rolling until you hit a 6 and the upgrade prompt
+appears.
 
 ### Testing the 6 without waiting for luck
 
@@ -112,9 +113,16 @@ asserts the invariants that would silently break the game if the balance data dr
 - each dice's worst roll beats the tier below's best roll
 - `get()` clamps out-of-range scores instead of returning nil
 - value formatting and screen sizing
+- every catalog `Style` has a matching builder in `TvBuilder`, and vice versa
+- **each face's landing rotation really does turn that face to `+Y`** — the stub implements
+  `CFrame.Angles` as a genuine rotation matrix, so this is checked arithmetically rather than
+  trusted
+- the die is a real die: opposite faces sum to 7 with exactly opposite normals, all six normals
+  and surfaces are distinct, face *n* has *n* pips, and no pip sits outside its face
 
 If you add a dice tier or TVs, run this before playtesting — it catches an off-by-one in
-`ScoreOffset` in a second, which is otherwise a subtle "some TVs are unobtainable" bug.
+`ScoreOffset` in a second, which is otherwise a subtle "some TVs are unobtainable" bug, and it
+catches a die that would quietly land on the wrong number.
 
 ## Other commands
 
@@ -201,6 +209,62 @@ cashed in later. Declining is allowed and just clears the flag.
 
 At Diamond there's no tier above, so no offer is made — a 6 is simply a 6.
 
+### The 3D die
+
+The die is a real part thrown into the world, with pips drawn on all six faces. It is
+**deliberately not physics-driven**, and that's the important design decision in the whole
+file — worth understanding before changing it.
+
+The server decides the number *before* anything is drawn. A physics die would either have to
+contradict that number when it came to rest, or *become* the source of truth — which would hand
+outcome control to the client and make the die land differently for every player watching.
+
+So the tumble is scripted, and lands on target *by construction* rather than by correction. The
+rotation applied at time `t` is:
+
+```lua
+CFrame.Angles(2*pi * turns.X * t, 2*pi * turns.Y * t, 2*pi * turns.Z * t) * landOrientation
+```
+
+Because `turns` are whole numbers, at `t = 1` the spin term is exactly the identity, leaving
+only `landOrientation`. The die comes to rest on precisely the right face with **no snap or
+correction at the end** — and it's impossible for it to settle on the wrong number.
+
+[DiceGeometry.luau](src/shared/DiceGeometry.luau) holds the maths: which axis each numbered face
+points along, which part face its pips are drawn on, and the rotation that turns that face
+skyward. Pips and landing maths are generated from the same table, so they can't drift apart.
+The test suite verifies each `landOrientation` really does rotate its face to `+Y`.
+
+The die is built client-side, so it isn't replicated and costs the server nothing. The flip side:
+**you can't see other players' dice**, only your own. Moving it server-side would fix that at the
+cost of replication traffic.
+
+### TVs that look like their name
+
+[TvBuilder.luau](src/shared/TvBuilder.luau) constructs each telly out of parts at runtime, from a
+`Style` on the catalog entry — so the model matches the description:
+
+| Style | What gets built |
+| --- | --- |
+| `portable` | Small deep box, carry handle, leaning aerial, tuning dials |
+| `crt` | Fat cathode-ray body with a tapered tube out the back, thick bezel, three dials |
+| `console` | Wooden cabinet on four splayed legs, speaker grille, screen sunk into the panel |
+| `plasma` | Early flat panel — still thick, heavy bezel, chunky base |
+| `lcd` | Ordinary flatscreen, moderate bezel, neck-and-base stand |
+| `oled` | Near-bezel-less panel 0.16 studs thick on a blade foot |
+| `projector` | Projector box with a lens, a translucent beam, and a floating frameless image |
+| `rollable` | Panel rising out of a horizontal drum |
+| `transparent` | See-through glass panel lit by neon edge strips |
+| `holo` | Floating pane above an emitter puck, no stand at all |
+
+Screens use `Neon` and carry a `PointLight` tinted to the screen colour, brighter up the ladder —
+a Diamond TV lights the ground around its podium. Every model is assembled around an origin at
+its **bottom centre** with an invisible `Root` as the `PrimaryPart`, so `PivotTo` stands it on a
+surface rather than burying it halfway in.
+
+Adding a style to `TvCatalog.Styles` without writing its builder **fails the test suite** rather
+than silently shipping a plain grey box.
+
 ### Server authority
 
 The client sends `RequestRoll` with **no arguments** and never sends a number, score, or TV.
@@ -213,7 +277,10 @@ the button but can't choose its own outcome, and a 1.5s cooldown is enforced ser
 | File | Job |
 | --- | --- |
 | [DiceTiers.luau](src/shared/DiceTiers.luau) | The five dice and their score windows |
+| [DiceGeometry.luau](src/shared/DiceGeometry.luau) | Face normals, pip layouts, and landing rotations for the die |
 | [TvCatalog.luau](src/shared/TvCatalog.luau) | 30 TVs, indexed by score, plus size/value helpers |
+| [TvBuilder.luau](src/shared/TvBuilder.luau) | Builds each TV out of parts, one builder per style |
+| [DiceController.luau](src/client/controllers/DiceController.luau) | Throws the 3D die and lands it on the server's number |
 | [PlayerDataService.luau](src/server/services/PlayerDataService.luau) | Owns dice tier + collection; the only thing that mutates player state |
 | [RollService.luau](src/server/services/RollService.luau) | Rolls, awards, cooldown, upgrade offers |
 | [TvDisplayService.luau](src/server/services/TvDisplayService.luau) | Four podiums, built in code, showing each player's best TV |

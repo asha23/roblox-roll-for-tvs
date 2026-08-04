@@ -1,9 +1,12 @@
 --!strict
--- Builds one podium per player slot and shows each player's best TV on theirs.
+-- Builds one podium per player slot and stands each player's best TV on theirs.
 --
--- The podiums are generated in code rather than modelled in Studio, so the game is
--- playable straight from a bare baseplate. Once Arlo wants to model proper ones, delete
--- buildPodium and point this at models in ReplicatedStorage instead.
+-- The podium is a plinth plus a nameplate; the telly itself comes from TvBuilder, which
+-- builds a different shape per catalog style. When a player beats their best score the old
+-- model is destroyed and a new one built — that only happens on an improvement, so it's
+-- rare enough not to bother pooling.
+--
+-- All generated in code, so the game is playable straight from a bare baseplate.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11,6 +14,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local TvBuilder = require(Shared:WaitForChild("TvBuilder"))
 local TvCatalog = require(Shared:WaitForChild("TvCatalog"))
 
 local PlayerDataService = require(script.Parent.PlayerDataService)
@@ -21,96 +25,88 @@ local TvDisplayService = {
 
 type Podium = {
 	Model: Model,
-	Screen: Part,
-	Label: TextLabel,
+	Plinth: Part,
+	TopSurface: Vector3,
 	Owner: TextLabel,
+	Caption: TextLabel,
 	Player: Player?,
+	-- The TV model currently on show, and the score it was built from.
+	Tv: Model?,
+	TvScore: number,
 }
 
 local podiums: { Podium } = {}
 
-local function makePart(name: string, parent: Instance, size: Vector3, position: Vector3): Part
-	local part = Instance.new("Part")
-	part.Name = name
-	part.Anchored = true
-	part.CanCollide = true
-	part.TopSurface = Enum.SurfaceType.Smooth
-	part.BottomSurface = Enum.SurfaceType.Smooth
-	part.Size = size
-	part.Position = position
-	part.Parent = parent
-	return part
-end
-
 local function buildPodium(slot: number): Podium
+	local plinthSize = Config.Podiums.PlinthSize
 	local offset = (slot - (Config.MaxPlayers + 1) / 2) * Config.Podiums.Spacing
 	local base = Config.Podiums.Origin + Vector3.new(offset, 0, 0)
 
 	local model = Instance.new("Model")
 	model.Name = `Podium{slot}`
 
-	local plinth = makePart("Plinth", model, Vector3.new(14, 1, 6), base + Vector3.new(0, 0.5, 0))
+	local plinth = Instance.new("Part")
+	plinth.Name = "Plinth"
+	plinth.Size = plinthSize
+	plinth.Position = base + Vector3.new(0, plinthSize.Y / 2, 0)
+	plinth.Anchored = true
+	plinth.TopSurface = Enum.SurfaceType.Smooth
+	plinth.BottomSurface = Enum.SurfaceType.Smooth
 	plinth.BrickColor = BrickColor.new("Dark stone grey")
 	plinth.Material = Enum.Material.Concrete
+	plinth.Parent = model
 	model.PrimaryPart = plinth
 
-	local stand = makePart("Stand", model, Vector3.new(1.5, 4, 1.5), base + Vector3.new(0, 3, 0))
-	stand.BrickColor = BrickColor.new("Really black")
-	stand.Material = Enum.Material.Metal
-
-	-- Sized and coloured per TV in update(); starts small and dark for an empty podium.
-	local screen = makePart("Screen", model, Vector3.new(6, 4, 0.4), base + Vector3.new(0, 7, 0))
-	screen.Material = Enum.Material.Neon
-	screen.Color = Color3.fromRGB(20, 20, 20)
-	screen.CanCollide = false
-
-	local surface = Instance.new("SurfaceGui")
-	-- Back, not Front: a Part's Front face normal points down -Z, and the podiums sit at
-	-- negative Z relative to spawn, so Front would render the text facing away from players.
-	surface.Face = Enum.NormalId.Back
-	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	surface.PixelsPerStud = 48
-	surface.AlwaysOnTop = false
-	surface.Parent = screen
-
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.Font = Enum.Font.GothamBold
-	label.TextScaled = true
-	-- White on a black stroke, because the screen colour behind it ranges from near-black
-	-- (score 1) to bright neon (score 30) and plain black text vanishes on the dark end.
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0
-	label.Text = "EMPTY"
-	label.Parent = surface
-
 	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.fromOffset(260, 44)
-	billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
+	billboard.Size = UDim2.fromOffset(300, 66)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.2, 0)
 	billboard.AlwaysOnTop = true
-	billboard.MaxDistance = 200
+	billboard.MaxDistance = 250
 	billboard.Parent = plinth
 
 	local owner = Instance.new("TextLabel")
-	owner.Size = UDim2.fromScale(1, 1)
+	owner.Name = "Owner"
+	owner.Size = UDim2.new(1, 0, 0.5, 0)
 	owner.BackgroundTransparency = 1
 	owner.Font = Enum.Font.GothamBold
 	owner.TextScaled = true
 	owner.TextColor3 = Color3.new(1, 1, 1)
-	owner.TextStrokeTransparency = 0.4
+	owner.TextStrokeTransparency = 0.3
 	owner.Text = `Slot {slot} — open`
 	owner.Parent = billboard
+
+	local caption = Instance.new("TextLabel")
+	caption.Name = "Caption"
+	caption.Position = UDim2.fromScale(0, 0.5)
+	caption.Size = UDim2.new(1, 0, 0.5, 0)
+	caption.BackgroundTransparency = 1
+	caption.Font = Enum.Font.Gotham
+	caption.TextScaled = true
+	caption.TextColor3 = Color3.fromRGB(200, 206, 216)
+	caption.TextStrokeTransparency = 0.5
+	caption.Text = ""
+	caption.Parent = billboard
 
 	model.Parent = Workspace
 
 	return {
 		Model = model,
-		Screen = screen,
-		Label = label,
+		Plinth = plinth,
+		TopSurface = base + Vector3.new(0, plinthSize.Y, 0),
 		Owner = owner,
+		Caption = caption,
 		Player = nil,
+		Tv = nil,
+		TvScore = 0,
 	}
+end
+
+local function clearTv(podium: Podium)
+	if podium.Tv then
+		podium.Tv:Destroy()
+		podium.Tv = nil
+	end
+	podium.TvScore = 0
 end
 
 local function findPodium(player: Player): Podium?
@@ -126,31 +122,35 @@ local function update(podium: Podium, bestScore: number, totalValue: number)
 	local player = podium.Player
 	if not player then
 		podium.Owner.Text = "Open slot"
-		podium.Label.Text = "EMPTY"
-		podium.Screen.Color = Color3.fromRGB(20, 20, 20)
-		podium.Screen.Size = Vector3.new(6, 4, 0.4)
+		podium.Caption.Text = ""
+		clearTv(podium)
 		return
 	end
 
-	podium.Owner.Text = `{player.DisplayName} — {TvCatalog.formatValue(totalValue)}`
+	podium.Owner.Text = player.DisplayName
 
 	if bestScore <= 0 then
-		podium.Label.Text = "NO TV YET"
-		podium.Screen.Color = Color3.fromRGB(20, 20, 20)
-		podium.Screen.Size = Vector3.new(6, 4, 0.4)
+		podium.Caption.Text = "no TV yet"
+		clearTv(podium)
 		return
 	end
 
 	local tv = TvCatalog.get(bestScore)
-	local size = TvCatalog.screenSize(bestScore)
-	local previousCentre = podium.Screen.Position
+	podium.Caption.Text = `{tv.Name} · {TvCatalog.formatValue(totalValue)}`
 
-	podium.Screen.Size = size
-	-- Keep the bottom of the screen on the stand as it grows.
-	podium.Screen.Position =
-		Vector3.new(previousCentre.X, Config.Podiums.Origin.Y + 5 + size.Y / 2, previousCentre.Z)
-	podium.Screen.Color = tv.Screen
-	podium.Label.Text = `{tv.Name}\n{tv.Rarity} · {TvCatalog.formatValue(tv.Value)}`
+	-- Only rebuild when the actual TV changes; the caption above updates on every roll.
+	if podium.TvScore == bestScore then
+		return
+	end
+
+	clearTv(podium)
+	local model = TvBuilder.build(bestScore)
+	-- TvBuilder puts the model's origin at the bottom centre of the telly, so this stands
+	-- it on the plinth rather than burying it halfway in.
+	model:PivotTo(CFrame.new(podium.TopSurface))
+	model.Parent = podium.Model
+	podium.Tv = model
+	podium.TvScore = bestScore
 end
 
 function TvDisplayService:Init()

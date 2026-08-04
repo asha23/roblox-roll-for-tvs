@@ -2,8 +2,8 @@
 -- The roll button, the result card, and the "you rolled a 6" upgrade prompt.
 --
 -- Nothing here decides an outcome. The button sends RequestRoll and waits; every number
--- shown comes from the server's RollResult. The digit spin is pure decoration played
--- after the real answer has already arrived.
+-- shown comes from the server's RollResult. DiceController then throws a 3D die that
+-- lands on that number, and the card appears once it has settled.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -14,6 +14,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local TvCatalog = require(Shared:WaitForChild("TvCatalog"))
+
+local DiceController = require(script.Parent.DiceController)
 
 local player = Players.LocalPlayer
 
@@ -72,17 +74,16 @@ local function onRollResult(result: any)
 	rollToken += 1
 	local token = rollToken
 
-	showCard()
+	-- Throw the die and wait for it to settle. The number is already decided; this just
+	-- shows it landing. The card stays hidden until then so it can't spoil the reveal.
+	DiceController:Play(result.Roll, result.DiceColor)
 
-	-- Spin through random faces, then land on what the server actually rolled.
-	local spinUntil = os.clock() + Config.Roll.SpinSeconds
-	cardTvName.Text = "rolling…"
-	cardDetail.Text = ""
-	while os.clock() < spinUntil do
-		cardRoll.Text = tostring(math.random(1, result.Sides or 6))
-		task.wait(0.06)
+	-- A newer roll started while this die was in the air — let that one own the screen.
+	if token ~= rollToken then
+		return
 	end
 
+	showCard()
 	cardRoll.Text = tostring(result.Roll)
 	cardRoll.TextColor3 = if result.IsMaxFace
 		then Color3.fromRGB(255, 214, 90)

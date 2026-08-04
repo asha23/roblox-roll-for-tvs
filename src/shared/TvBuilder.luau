@@ -1,0 +1,460 @@
+--!strict
+-- Builds a TV model that looks like its name, out of parts, at runtime.
+--
+-- One builder per TvCatalog style. Every model is assembled around a local origin sitting
+-- at the *bottom centre* of the telly, with an invisible Root as the PrimaryPart, so a
+-- caller can drop it anywhere with model:PivotTo(CFrame.new(surfacePosition)).
+--
+-- Screen size comes from the score, so a 30 is physically enormous next to a 1.
+
+local TvCatalog = require(script.Parent.TvCatalog)
+
+local TvBuilder = {}
+
+type Build = {
+	Model: Model,
+	Tv: TvCatalog.Tv,
+	ScreenWidth: number,
+	ScreenHeight: number,
+}
+
+local function part(build: Build, name: string, size: Vector3, position: Vector3): Part
+	local instance = Instance.new("Part")
+	instance.Name = name
+	instance.Size = size
+	instance.Position = position
+	instance.Anchored = true
+	instance.CanCollide = false
+	instance.CanQuery = false
+	instance.TopSurface = Enum.SurfaceType.Smooth
+	instance.BottomSurface = Enum.SurfaceType.Smooth
+	instance.Color = build.Tv.Body
+	instance.Material = Enum.Material.SmoothPlastic
+	instance.Parent = build.Model
+	return instance
+end
+
+local function cylinder(build: Build, name: string, size: Vector3, cf: CFrame): Part
+	local instance = part(build, name, size, Vector3.zero)
+	instance.Shape = Enum.PartType.Cylinder
+	instance.CFrame = cf
+	return instance
+end
+
+-- The glowing bit. Every style calls this so "screen" always means the same thing.
+local function screen(
+	build: Build,
+	width: number,
+	height: number,
+	centre: Vector3,
+	depth: number?
+): Part
+	local glass = part(build, "Screen", Vector3.new(width, height, depth or 0.16), centre)
+	glass.Color = build.Tv.Screen
+	glass.Material = Enum.Material.Neon
+	return glass
+end
+
+local function light(build: Build, parent: Part, brightness: number, range: number)
+	local glow = Instance.new("PointLight")
+	glow.Color = build.Tv.Screen
+	glow.Brightness = brightness
+	glow.Range = range
+	glow.Parent = parent
+end
+
+-- A neck-and-base stand, centred under the panel.
+local function pedestal(build: Build, panelBottom: number, width: number, slim: boolean)
+	local neckHeight = panelBottom
+	if neckHeight <= 0.2 then
+		return
+	end
+	local neckWidth = if slim then 0.5 else 1.1
+	part(
+		build,
+		"Neck",
+		Vector3.new(neckWidth, neckHeight, if slim then 0.5 else 1.0),
+		Vector3.new(0, neckHeight / 2, 0)
+	)
+	local baseWidth = if slim then width * 0.5 else math.max(2.6, width * 0.34)
+	part(
+		build,
+		"Base",
+		Vector3.new(baseWidth, 0.28, if slim then 1.6 else 2.2),
+		Vector3.new(0, 0.14, 0)
+	)
+end
+
+local builders: { [string]: (Build) -> () } = {}
+
+-- Little box telly with an aerial and a carry handle. Deep, small screen, chunky bezel.
+function builders.portable(build: Build)
+	local w = build.ScreenWidth * 0.7
+	local h = build.ScreenHeight * 0.7
+	local bodyW, bodyH, bodyD = w + 1.6, h + 1.4, math.max(2.6, w * 0.8)
+	local centreY = 0.6 + bodyH / 2
+
+	part(build, "Body", Vector3.new(bodyW, bodyH, bodyD), Vector3.new(0, centreY, 0))
+	screen(build, w, h, Vector3.new(0, centreY + 0.15, bodyD / 2))
+
+	-- Handle across the top.
+	part(
+		build,
+		"Handle",
+		Vector3.new(bodyW * 0.4, 0.22, 0.3),
+		Vector3.new(0, centreY + bodyH / 2 + 0.3, 0)
+	)
+
+	-- Aerial, leaning back.
+	local aerial = part(build, "Aerial", Vector3.new(0.12, bodyH * 1.5, 0.12), Vector3.zero)
+	aerial.CFrame = CFrame.new(bodyW * 0.32, centreY + bodyH * 0.9, -bodyD * 0.3)
+		* CFrame.Angles(math.rad(-18), 0, math.rad(12))
+	aerial.Color = Color3.fromRGB(180, 182, 188)
+	aerial.Material = Enum.Material.Metal
+
+	-- Two tuning dials on the right of the screen.
+	for index = 1, 2 do
+		local dial = cylinder(
+			build,
+			`Dial{index}`,
+			Vector3.new(0.22, 0.5, 0.5),
+			CFrame.new(bodyW / 2 - 0.5, centreY + 0.6 - (index - 1) * 0.9, bodyD / 2)
+				* CFrame.Angles(0, 0, math.rad(90))
+		)
+		dial.Color = Color3.fromRGB(40, 40, 44)
+	end
+
+	part(build, "FootLeft", Vector3.new(0.5, 0.6, 0.5), Vector3.new(-bodyW * 0.32, 0.3, 0))
+	part(build, "FootRight", Vector3.new(0.5, 0.6, 0.5), Vector3.new(bodyW * 0.32, 0.3, 0))
+end
+
+-- Classic deep cathode-ray box: fat backing tube, thick bezel, dials down the side.
+function builders.crt(build: Build)
+	local w, h = build.ScreenWidth * 0.85, build.ScreenHeight * 0.85
+	local bodyW, bodyH = w + 1.8, h + 1.6
+	local bodyD = math.max(3.2, w * 0.85)
+	local centreY = 0.5 + bodyH / 2
+
+	part(build, "Body", Vector3.new(bodyW, bodyH, bodyD), Vector3.new(0, centreY, 0))
+	-- Tapered tube at the back is what makes a CRT read as a CRT.
+	part(
+		build,
+		"Tube",
+		Vector3.new(bodyW * 0.62, bodyH * 0.62, bodyD * 0.5),
+		Vector3.new(0, centreY, -bodyD * 0.6)
+	)
+	local glass = screen(build, w, h, Vector3.new(0, centreY + 0.2, bodyD / 2), 0.22)
+	light(build, glass, 0.6, 10)
+
+	for index = 1, 3 do
+		local dial = cylinder(
+			build,
+			`Dial{index}`,
+			Vector3.new(0.2, 0.42, 0.42),
+			CFrame.new(bodyW / 2 - 0.55, centreY - bodyH * 0.28 + (index - 1) * 0.7, bodyD / 2)
+				* CFrame.Angles(0, 0, math.rad(90))
+		)
+		dial.Color = Color3.fromRGB(36, 36, 40)
+	end
+
+	part(build, "FootLeft", Vector3.new(0.7, 0.5, bodyD * 0.6), Vector3.new(-bodyW * 0.34, 0.25, 0))
+	part(build, "FootRight", Vector3.new(0.7, 0.5, bodyD * 0.6), Vector3.new(bodyW * 0.34, 0.25, 0))
+end
+
+-- Wooden cabinet on splayed legs, screen sunk into the front panel.
+function builders.console(build: Build)
+	local w, h = build.ScreenWidth * 0.8, build.ScreenHeight * 0.8
+	local cabinetW, cabinetH, cabinetD = w + 4.0, h + 2.4, math.max(3.4, w * 0.9)
+	local legHeight = 1.6
+	local centreY = legHeight + cabinetH / 2
+
+	local cabinet = part(
+		build,
+		"Cabinet",
+		Vector3.new(cabinetW, cabinetH, cabinetD),
+		Vector3.new(0, centreY, 0)
+	)
+	cabinet.Material = Enum.Material.Wood
+
+	local glass =
+		screen(build, w, h, Vector3.new(-cabinetW * 0.14, centreY + 0.3, cabinetD / 2), 0.2)
+	light(build, glass, 0.5, 9)
+
+	-- Speaker grille and dials in the panel beside the screen.
+	local grille = part(
+		build,
+		"Grille",
+		Vector3.new(cabinetW * 0.18, cabinetH * 0.5, 0.14),
+		Vector3.new(cabinetW * 0.3, centreY + 0.2, cabinetD / 2)
+	)
+	grille.Color = Color3.fromRGB(72, 60, 44)
+	grille.Material = Enum.Material.Fabric
+
+	for index = 1, 2 do
+		local dial = cylinder(
+			build,
+			`Dial{index}`,
+			Vector3.new(0.2, 0.4, 0.4),
+			CFrame.new(cabinetW * 0.3, centreY - cabinetH * 0.34, cabinetD / 2)
+				+ Vector3.new((index - 1.5) * 0.9, 0, 0)
+		)
+		dial.CFrame = dial.CFrame * CFrame.Angles(0, 0, math.rad(90))
+		dial.Color = Color3.fromRGB(214, 190, 140)
+		dial.Material = Enum.Material.Metal
+	end
+
+	-- Four splayed legs.
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			local leg = part(build, "Leg", Vector3.new(0.3, legHeight, 0.3), Vector3.zero)
+			leg.CFrame = CFrame.new(sx * cabinetW * 0.38, legHeight / 2, sz * cabinetD * 0.3)
+				* CFrame.Angles(math.rad(sz * -6), 0, math.rad(sx * -6))
+			leg.Color = Color3.fromRGB(74, 46, 24)
+			leg.Material = Enum.Material.Wood
+		end
+	end
+end
+
+-- First-generation flat panel: still thick, heavy bezel, chunky base.
+function builders.plasma(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.5
+	local centreY = panelBottom + h / 2 + 0.7
+
+	part(build, "Panel", Vector3.new(w + 1.5, h + 1.5, 0.9), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.5))
+	light(build, glass, 0.9, 14)
+	pedestal(build, panelBottom, w, false)
+end
+
+-- Ordinary modern flatscreen: moderate bezel, neck-and-base stand.
+function builders.lcd(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.8
+	local centreY = panelBottom + h / 2 + 0.5
+
+	part(build, "Panel", Vector3.new(w + 0.7, h + 0.7, 0.42), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.26))
+	light(build, glass, 1.1, 16)
+	pedestal(build, panelBottom, w, false)
+end
+
+-- Premium panel: almost no bezel, thin as a phone, blade stand.
+function builders.oled(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.4
+	local centreY = panelBottom + h / 2 + 0.3
+
+	part(build, "Panel", Vector3.new(w + 0.2, h + 0.2, 0.16), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.1))
+	light(build, glass, 1.6, 22)
+
+	-- Single wide blade foot rather than a neck.
+	local blade = part(
+		build,
+		"Blade",
+		Vector3.new(w * 0.55, panelBottom, 0.2),
+		Vector3.new(0, panelBottom / 2, 0)
+	)
+	blade.Color = Color3.fromRGB(150, 154, 162)
+	blade.Material = Enum.Material.Metal
+	part(build, "Base", Vector3.new(w * 0.62, 0.22, 1.8), Vector3.new(0, 0.11, 0))
+end
+
+-- A projector box throwing a beam at a floating screen.
+function builders.projector(build: Build)
+	local w, h = build.ScreenWidth * 1.15, build.ScreenHeight * 1.15
+	local screenBottom = 2.0
+	local centreY = screenBottom + h / 2
+
+	-- The projected image: bright, frameless, floating.
+	local image = screen(build, w, h, Vector3.new(0, centreY, 0), 0.1)
+	image.Transparency = 0.15
+	light(build, image, 2.0, 26)
+
+	-- Thin surround so it reads as a screen rather than a floating rectangle.
+	local frame =
+		part(build, "Frame", Vector3.new(w + 0.3, h + 0.3, 0.06), Vector3.new(0, centreY, -0.06))
+	frame.Color = Color3.fromRGB(20, 20, 24)
+
+	-- The projector itself, sat out in front. Fixed distance rather than scaled off the
+	-- screen width, so a big screen doesn't push the box off the front of the podium.
+	local boxZ = 4.0
+	part(build, "Projector", Vector3.new(2.6, 1.1, 3.2), Vector3.new(0, 1.2, boxZ))
+	local lens = cylinder(
+		build,
+		"Lens",
+		Vector3.new(0.5, 0.9, 0.9),
+		CFrame.new(0, 1.2, boxZ - 1.7) * CFrame.Angles(0, 0, math.rad(90))
+	)
+	lens.Color = build.Tv.Screen
+	lens.Material = Enum.Material.Neon
+
+	-- The beam, widening towards the screen.
+	local beam = part(
+		build,
+		"Beam",
+		Vector3.new(w * 0.5, h * 0.4, boxZ - 1.0),
+		Vector3.new(0, centreY * 0.75, boxZ / 2)
+	)
+	beam.Color = build.Tv.Screen
+	beam.Material = Enum.Material.Neon
+	beam.Transparency = 0.88
+end
+
+-- Panel rising out of a horizontal drum, half-unrolled.
+function builders.rollable(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local drumHeight = 1.5
+	local centreY = drumHeight + h / 2
+
+	local drum = cylinder(
+		build,
+		"Drum",
+		Vector3.new(w + 0.6, drumHeight, drumHeight),
+		CFrame.new(0, drumHeight / 2, 0) * CFrame.Angles(0, 0, math.rad(90))
+	)
+	drum.Material = Enum.Material.Brick
+
+	part(build, "Panel", Vector3.new(w + 0.15, h, 0.1), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h - 0.2, Vector3.new(0, centreY, 0.07))
+	light(build, glass, 1.5, 20)
+end
+
+-- Glass you can see through, lit from a frame of neon edges.
+function builders.transparent(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.8
+	local centreY = panelBottom + h / 2
+
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0), 0.12)
+	glass.Transparency = 0.55
+	glass.Material = Enum.Material.Glass
+	light(build, glass, 1.4, 20)
+
+	-- Neon edge strips top and bottom do the "it's powered" work.
+	for _, sy in { -1, 1 } do
+		local edge = part(
+			build,
+			"Edge",
+			Vector3.new(w + 0.4, 0.16, 0.3),
+			Vector3.new(0, centreY + sy * h / 2, 0)
+		)
+		edge.Color = build.Tv.Screen
+		edge.Material = Enum.Material.Neon
+	end
+
+	local post =
+		part(build, "Post", Vector3.new(0.3, panelBottom, 0.3), Vector3.new(0, panelBottom / 2, 0))
+	post.Material = Enum.Material.Metal
+	part(build, "Base", Vector3.new(w * 0.5, 0.2, 1.6), Vector3.new(0, 0.1, 0))
+end
+
+-- No stand at all: a floating pane above an emitter puck.
+function builders.holo(build: Build)
+	local w, h = build.ScreenWidth * 1.1, build.ScreenHeight * 1.1
+	local floatHeight = 2.6
+	local centreY = floatHeight + h / 2
+
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0), 0.1)
+	glass.Transparency = 0.35
+	light(build, glass, 2.4, 30)
+
+	-- Frame of neon rails around the pane.
+	for _, sy in { -1, 1 } do
+		local rail = part(
+			build,
+			"Rail",
+			Vector3.new(w + 0.5, 0.14, 0.28),
+			Vector3.new(0, centreY + sy * h / 2, 0)
+		)
+		rail.Color = build.Tv.Screen
+		rail.Material = Enum.Material.Neon
+	end
+	for _, sx in { -1, 1 } do
+		local rail = part(
+			build,
+			"Rail",
+			Vector3.new(0.14, h + 0.5, 0.28),
+			Vector3.new(sx * w / 2, centreY, 0)
+		)
+		rail.Color = build.Tv.Screen
+		rail.Material = Enum.Material.Neon
+	end
+
+	-- Emitter, with a cone of light up to the pane.
+	local puck = cylinder(
+		build,
+		"Emitter",
+		Vector3.new(0.5, w * 0.42, w * 0.42),
+		CFrame.new(0, 0.25, 0) * CFrame.Angles(0, 0, math.rad(90))
+	)
+	puck.Material = Enum.Material.Metal
+
+	local ring = cylinder(
+		build,
+		"EmitterRing",
+		Vector3.new(0.16, w * 0.3, w * 0.3),
+		CFrame.new(0, 0.55, 0) * CFrame.Angles(0, 0, math.rad(90))
+	)
+	ring.Color = build.Tv.Screen
+	ring.Material = Enum.Material.Neon
+
+	local beam = part(
+		build,
+		"Beam",
+		Vector3.new(w * 0.28, floatHeight, w * 0.28),
+		Vector3.new(0, floatHeight / 2, 0)
+	)
+	beam.Color = build.Tv.Screen
+	beam.Material = Enum.Material.Neon
+	beam.Transparency = 0.86
+end
+
+-- Builds the TV for a score. Origin is the bottom centre; PrimaryPart is an invisible Root.
+function TvBuilder.build(score: number): Model
+	local tv = TvCatalog.get(score)
+	local size = TvCatalog.screenSize(score)
+
+	local model = Instance.new("Model")
+	model.Name = tv.Name
+
+	local build: Build = {
+		Model = model,
+		Tv = tv,
+		ScreenWidth = size.X,
+		ScreenHeight = size.Y,
+	}
+
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(0.2, 0.2, 0.2)
+	root.CFrame = CFrame.new(0, 0, 0)
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.Transparency = 1
+	root.Parent = model
+	model.PrimaryPart = root
+
+	local builder = builders[tv.Style]
+	if not builder then
+		-- Shouldn't happen: tests/gamelogic.luau asserts every style has a builder.
+		warn(`[TvBuilder] No builder for style "{tv.Style}" (score {score}), using lcd`)
+		builder = builders.lcd
+	end
+	builder(build)
+
+	return model
+end
+
+-- Exposed so the test can check it covers every style in TvCatalog.Styles.
+function TvBuilder.styles(): { [string]: boolean }
+	local names = {}
+	for name in builders do
+		names[name] = true
+	end
+	return names
+end
+
+return TvBuilder
