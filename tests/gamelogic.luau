@@ -286,6 +286,46 @@ check(
 check("doorway is narrower than the shopfront", shop.DoorWidth < shop.HalfWidth * 2)
 check("shop is tall enough for the biggest TV", shop.WallHeight > 14)
 
+print("== monetisation is safe to ship ==")
+-- The important one: GrantWithoutPaying hands out dice upgrades for free so the purchase
+-- flow can be exercised in Studio, where real purchases don't work. Leaving it on in a
+-- shipped build would give every player free upgrades forever, and nothing in the game
+-- would look wrong. Fail the build instead.
+check(
+	"GrantWithoutPaying is off",
+	Config.Monetisation.GrantWithoutPaying == false,
+	"turn it back off before shipping"
+)
+check("a display price is set", Config.Monetisation.DisplayPrice > 0)
+check(
+	"product id is a non-negative whole number",
+	Config.Monetisation.DiceUpgradeProductId >= 0
+		and Config.Monetisation.DiceUpgradeProductId % 1 == 0
+)
+
+print("== penalty and backrooms bounds ==")
+check("the roll-a-1 penalty actually costs something", Config.Penalty.DowngradeLevels >= 1)
+check(
+	"the penalty can't wipe out a whole tier in one roll",
+	Config.Penalty.DowngradeLevels < 6,
+	"a tier is 6 levels wide"
+)
+
+local back = Config.Backrooms
+check(
+	"backrooms are at least as wide as the shop",
+	back.HalfWidth >= shop.HalfWidth,
+	"otherwise the flank walls have negative width and the shop sticks out"
+)
+check("backrooms are deep enough for several rooms", back.Depth > back.CellSize * 3)
+check("maze cells fit inside the width", back.CellSize < back.HalfWidth)
+check(
+	"the door fits through a maze cell",
+	shop.DoorWidth < back.CellSize * 3,
+	"the cleared area by the door is three cells wide"
+)
+check("backrooms ceiling is walkable height", back.CeilingHeight >= 8)
+
 print(`\n{checks - failures}/{checks} checks passed`)
 if failures > 0 then
 	print(`{failures} FAILED`)

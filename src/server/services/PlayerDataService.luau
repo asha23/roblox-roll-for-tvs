@@ -76,6 +76,44 @@ function PlayerDataService:AwardTv(player: Player, score: number)
 	self:Sync(player)
 end
 
+-- Knocks every TV already collected down `levels`, floored at the worst TV in the game.
+-- Returns how many actually moved, so the client can say nothing happened to an empty
+-- collection rather than claiming a penalty that didn't land.
+function PlayerDataService:DowngradeCollection(player: Player, levels: number): number
+	local playerData = data[player]
+	if not playerData then
+		return 0
+	end
+
+	local moved = 0
+	for index, score in playerData.Tvs do
+		local downgraded = math.max(1, score - levels)
+		if downgraded ~= score then
+			moved += 1
+		end
+		playerData.Tvs[index] = downgraded
+	end
+
+	if moved == 0 then
+		return 0
+	end
+
+	-- Recompute rather than adjust: BestScore may now belong to a different TV entirely,
+	-- and subtracting deltas would drift out of step with the list.
+	local total, best = 0, 0
+	for _, score in playerData.Tvs do
+		total += TvCatalog.get(score).Value
+		if score > best then
+			best = score
+		end
+	end
+	playerData.TotalValue = total
+	playerData.BestScore = best
+
+	self:Sync(player)
+	return moved
+end
+
 function PlayerDataService:SetDiceTier(player: Player, tier: number)
 	local playerData = data[player]
 	if not playerData then

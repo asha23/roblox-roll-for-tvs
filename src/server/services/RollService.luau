@@ -45,6 +45,17 @@ function RollService:Roll(player: Player)
 	local roll = rng:NextInteger(1, tier.Sides)
 	local score = tier.ScoreOffset + roll
 
+	-- Rolling a 1 knocks the existing collection down a level. Applied BEFORE the new TV is
+	-- awarded, so the telly you just won arrives at full value and only what you already had
+	-- degrades — otherwise a 1 would immediately devalue its own prize.
+	--
+	-- Note the roll still awards its TV. Skipping the award on a 1 would make the five
+	-- tier-floor TVs (scores 1, 7, 13, 19, 25) permanently unobtainable.
+	local isMinFace = roll == 1
+	local downgraded = if isMinFace
+		then PlayerDataService:DowngradeCollection(player, Config.Penalty.DowngradeLevels)
+		else 0
+
 	PlayerDataService:AwardTv(player, score)
 
 	-- Rolling the highest face offers the next dice up. Compared against Sides rather
@@ -60,6 +71,8 @@ function RollService:Roll(player: Player)
 		DiceName = tier.Name,
 		DiceColor = tier.Color,
 		IsMaxFace = isMaxFace,
+		IsMinFace = isMinFace,
+		Downgraded = downgraded,
 	})
 
 	if canUpgrade then

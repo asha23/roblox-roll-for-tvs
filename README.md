@@ -56,7 +56,8 @@ window (**View → Output**):
 
 ```
 [ShopService] Built the shop (N parts).
-[Server] Started 4 service(s).
+[BackroomsService] Built the Backrooms (N parts).
+[Server] Started 6 service(s).
 [Client] Started 3 controller(s).
 ```
 
@@ -121,6 +122,9 @@ asserts the invariants that would silently break the game if the balance data dr
   trusted
 - the die is a real die: opposite faces sum to 7 with exactly opposite normals, all six normals
   and surfaces are distinct, face *n* has *n* pips, and no pip sits outside its face
+- `GrantWithoutPaying` is off, so a build that hands out free dice upgrades can't ship
+- the roll-a-1 penalty costs something but can't wipe out a whole tier in one go
+- the Backrooms are at least as wide as the shop, so the flank walls aren't negative width
 - the podium row fits inside the shop — no plinth pokes through a side wall, adjacent podiums
   don't overlap, and there's walking room behind them. Resize the shop and this tells you
   immediately instead of you finding it in Studio
@@ -205,6 +209,49 @@ To rebalance, edit [TvCatalog.luau](src/shared/TvCatalog.luau) — names, values
 all data. To add a sixth dice, add a tier to [DiceTiers.luau](src/shared/DiceTiers.luau) with
 `ScoreOffset = 30` and six more TVs to the catalog.
 
+### Rolling a 1
+
+Rolling the lowest face knocks every TV you already own down a level (`Config.Penalty
+.DowngradeLevels`), floored at the worst TV in the game.
+
+Two details that aren't arbitrary:
+
+- **The penalty lands before the new TV is awarded**, so the telly you just won arrives at
+  full value and only what you already had degrades. The other order would have a 1
+  immediately devalue its own prize.
+- **A 1 still awards its TV.** Skipping the award would make the five tier-floor TVs — scores
+  1, 7, 13, 19 and 25 — permanently unobtainable, which the coverage test would catch.
+
+`DowngradeCollection` recomputes `TotalValue` and `BestScore` from the list rather than
+adjusting them by a delta, because the best TV may now be a different one entirely.
+
+### Paying for an upgrade
+
+There's a **Upgrade dice · 25 R$** button, so you don't have to wait for a 6.
+
+**This needs setting up before it works.** The price is not in the code — it lives on a Roblox
+Developer Product:
+
+1. On the game's page, create a **Developer Product** priced at **25 Robux**.
+2. Paste its ID into `Config.Monetisation.DiceUpgradeProductId`.
+3. Keep `Config.Monetisation.DisplayPrice` in step with the real price.
+
+Real purchases don't work on an unpublished place, so for local testing set
+`Config.Monetisation.GrantWithoutPaying = true` — it grants the upgrade without taking any
+Robux. **The test suite fails while that flag is on**, deliberately: shipping it would hand out
+free upgrades forever and nothing in the game would look wrong.
+
+The delicate part is `ProcessReceipt` in
+[MonetisationService.luau](src/server/services/MonetisationService.luau). Roblox calls it
+repeatedly until it returns `PurchaseGranted`, so it must be idempotent, and it must never
+report success for something it failed to hand over — that takes the player's Robux and gives
+nothing. It therefore returns `NotProcessedYet` when the player has left, when granting
+errored, and when the product isn't ours.
+
+**Known gap:** honoured `PurchaseId`s are held in memory, so a server restart mid-purchase
+could grant twice. The fix is a DataStore keyed on `PurchaseId`, worth adding at the same time
+as saving player data.
+
 ### Rolling a 6
 
 `RollService` compares the roll against the dice's own `Sides` rather than hard-coding 6, so a
@@ -280,6 +327,22 @@ The die is built client-side, so it isn't replicated and costs the server nothin
 **you can't see other players' dice**, only your own. Moving it server-side would fix that at the
 cost of replication traffic.
 
+**Bouncing.** The throw raycasts forward first. With a clear path it's a single arc; with
+something in the way — a telly, a podium, a wall — it flies out, stops short, and rebounds back
+towards you to settle on the floor where you can still read it. Before this it sailed straight
+through the screen.
+
+That's also why every part in `TvBuilder` has `CanQuery = true` despite nothing colliding with
+it: with queries off, the forward raycast didn't see the tellies at all. Both throw shapes finish
+exactly at the resting point, so the exact-landing property above still holds.
+
+### Camera and mouse
+
+`StarterPlayer.EnableMouseLockOption` is on, so **Shift toggles mouse-look** and the mouse steers
+the camera directly. Without it you're on Roblox's default third-person camera, where you have to
+hold **right mouse button** to look around — which is stock behaviour, not a bug, but it surprises
+everyone.
+
 ### TVs that look like their name
 
 [TvBuilder.luau](src/shared/TvBuilder.luau) constructs each telly out of parts at runtime, from a
@@ -296,6 +359,10 @@ cost of replication traffic.
 | `projector` | Projector box with a lens, a translucent beam, and a floating frameless image |
 | `rollable` | Panel rising out of a horizontal drum |
 | `transparent` | See-through glass panel lit by neon edge strips |
+| `lcdFeet` | Same panel on two splayed end feet rather than a centre neck |
+| `soundbar` | Flatscreen with a soundbar and grille slots beneath it |
+| `curved` | Curved screen faked with three angled segments — reads as a curve for three parts |
+| `wallmount` | Bracketed off a wall plate, no floor stand |
 | `holo` | Floating pane above an emitter puck, no stand at all |
 
 Screens use `Neon` and carry a `PointLight` tinted to the screen colour, brighter up the ladder —
@@ -303,8 +370,36 @@ a Diamond TV lights the ground around its podium. Every model is assembled aroun
 its **bottom centre** with an invisible `Root` as the `PrimaryPart`, so `PivotTo` stands it on a
 surface rather than burying it halfway in.
 
+Styles are spread across the ladder so no long run of neighbouring scores shares a shape —
+without that, the six Silver-tier flatscreens read as the same prop six times at different
+sizes.
+
+Every telly also gets **seeded detail**: a price tag showing its value, a standby LED, and
+jitter on where those sit. The seed is `Random.new(score * 7919)`, **not `math.random`** — a
+given TV has to look the same for every player and on every rebuild, or a podium would silently
+reshuffle its own telly each time it refreshed.
+
 Adding a style to `TvCatalog.Styles` without writing its builder **fails the test suite** rather
 than silently shipping a plain grey box.
+
+### The Backrooms
+
+Outside the shopfront is [BackroomsService.luau](src/server/services/BackroomsService.luau):
+mono-yellow wallpaper, damp carpet, low ceiling tiles, buzzing fluorescents with the odd dead
+one, and a maze of identical rooms on a 26-stud grid. You can see it through the glass and walk
+out into it.
+
+The layout uses a **fixed seed**, not `math.random`. It's generated at server startup, so an
+unseeded maze would be a different shape every launch and two servers would disagree about a
+place that's meant to feel endless.
+
+Two boundary details that were wrong first time and are easy to break again:
+
+- **The carpet starts exactly at `Shop.FrontZ`**, where the shop floor ends. Further out leaves
+  a hole in the floor across the doorway; nearer and two floor slabs overlap and flicker.
+- **The flank walls cover only the strip either side of the shop**, from the shop's corner out
+  to the perimeter — *not* across the shopfront. Wallpaper behind the glass would hide the very
+  thing the window looks out on, and would block the door.
 
 ### Server authority
 
@@ -323,6 +418,8 @@ the button but can't choose its own outcome, and a 1.5s cooldown is enforced ser
 | [TvBuilder.luau](src/shared/TvBuilder.luau) | Builds each TV out of parts, one builder per style |
 | [DiceController.luau](src/client/controllers/DiceController.luau) | Throws the 3D die and lands it on the server's number |
 | [ShopService.luau](src/server/services/ShopService.luau) | Builds the whole shop interior, lighting props and spawn |
+| [BackroomsService.luau](src/server/services/BackroomsService.luau) | Builds the Backrooms maze outside the shopfront |
+| [MonetisationService.luau](src/server/services/MonetisationService.luau) | Paid dice upgrades and receipt handling |
 | [PlayerDataService.luau](src/server/services/PlayerDataService.luau) | Owns dice tier + collection; the only thing that mutates player state |
 | [RollService.luau](src/server/services/RollService.luau) | Rolls, awards, cooldown, upgrade offers |
 | [TvDisplayService.luau](src/server/services/TvDisplayService.luau) | Four podiums, built in code, showing each player's best TV |

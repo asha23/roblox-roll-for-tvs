@@ -10,11 +10,14 @@ local EVENTS = {
 	-- client -> server
 	"RequestRoll",
 	"ChooseDiceUpgrade",
+	"RequestPaidUpgrade",
 
 	-- server -> client
 	"RollResult",
 	"DiceUpgradeOffered",
 	"DataChanged",
+	-- Short message shown as a toast, e.g. why a purchase did nothing.
+	"Notice",
 }
 
 local FUNCTIONS = {

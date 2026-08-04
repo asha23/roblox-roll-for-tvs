@@ -13,6 +13,23 @@ local Config = {
 		JumpPower = 50,
 	},
 
+	Monetisation = {
+		-- Paid dice upgrade. The PRICE IS NOT SET HERE — it lives on the Developer Product
+		-- in Roblox's dashboard. Create a product priced at 25 Robux on the game's page and
+		-- paste its ID below; until then the button explains itself rather than erroring.
+		DiceUpgradeProductId = 0,
+		-- What the button claims it costs. Keep it in step with the product's real price.
+		DisplayPrice = 25,
+		-- Local testing only: grants the paid upgrade without taking any Robux, so the flow
+		-- can be exercised in Studio where real purchases don't work. NEVER ship this true.
+		GrantWithoutPaying = false,
+	},
+
+	Penalty = {
+		-- Rolling the lowest face knocks every TV already collected down this many levels.
+		DowngradeLevels = 1,
+	},
+
 	Roll = {
 		-- Server-enforced. The client greys its button out for the same duration,
 		-- but the server is what actually decides.
@@ -31,6 +48,15 @@ local Config = {
 		DoorWidth = 16,
 		-- Walking surface. Everything stands on this.
 		FloorY = 0,
+	},
+
+	-- The Backrooms outside the shopfront. Not a nice place.
+	Backrooms = {
+		HalfWidth = 150,
+		Depth = 260,
+		CeilingHeight = 14,
+		-- Maze grid pitch. Walls are placed on cell edges.
+		CellSize = 26,
 	},
 
 	Podiums = {

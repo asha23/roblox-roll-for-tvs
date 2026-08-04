@@ -16,6 +16,10 @@ type Build = {
 	Tv: TvCatalog.Tv,
 	ScreenWidth: number,
 	ScreenHeight: number,
+	-- Seeded from the score, so a given TV always looks the same for every player and on
+	-- every rebuild, while neighbouring scores differ. Never use math.random here: the same
+	-- telly would change shape each time a podium rebuilt it.
+	Rng: Random,
 }
 
 local function part(build: Build, name: string, size: Vector3, position: Vector3): Part
@@ -25,7 +29,10 @@ local function part(build: Build, name: string, size: Vector3, position: Vector3
 	instance.Position = position
 	instance.Anchored = true
 	instance.CanCollide = false
-	instance.CanQuery = false
+	-- Queryable on purpose, even though nothing collides with it: DiceController raycasts
+	-- forward to find what the die is about to hit, and with CanQuery off the die sailed
+	-- straight through the tellies.
+	instance.CanQuery = true
 	instance.TopSurface = Enum.SurfaceType.Smooth
 	instance.BottomSurface = Enum.SurfaceType.Smooth
 	instance.Color = build.Tv.Body
@@ -91,6 +98,60 @@ local function pedestal(build: Build, panelBottom: number, width: number, slim: 
 		Vector3.new(baseWidth, 0.28, if slim then 1.6 else 2.2),
 		Vector3.new(0, 0.14, 0)
 	)
+end
+
+-- Little details hung on every telly regardless of style: a shop price tag, a standby LED,
+-- and for anything on a stand, a cable trailing to the floor. Cheap, and it's most of what
+-- stops six flatscreens in a row looking like the same prop six times.
+local function trimmings(build: Build, panelCentreY: number, panelWidth: number, panelFront: number)
+	local rng = build.Rng
+
+	local led = part(
+		build,
+		"StandbyLed",
+		Vector3.new(0.16, 0.16, 0.1),
+		Vector3.new(
+			panelWidth * (if rng:NextNumber() < 0.5 then -0.42 else 0.42),
+			panelCentreY - build.ScreenHeight / 2 - 0.24,
+			panelFront + 0.06
+		)
+	)
+	led.Color = if rng:NextNumber() < 0.35
+		then Color3.fromRGB(255, 96, 72)
+		else Color3.fromRGB(120, 255, 150)
+	led.Material = Enum.Material.Neon
+
+	-- Price tag on a short wire, off to one side.
+	local side = if rng:NextNumber() < 0.5 then -1 else 1
+	local tagX = side * (panelWidth / 2 + 0.7)
+	local tagY = panelCentreY + build.ScreenHeight * rng:NextNumber() * 0.2
+
+	local wire = part(
+		build,
+		"TagWire",
+		Vector3.new(0.06, 0.9, 0.06),
+		Vector3.new(tagX, tagY + 0.75, panelFront)
+	)
+	wire.Color = Color3.fromRGB(120, 122, 128)
+
+	local tag =
+		part(build, "PriceTag", Vector3.new(2.2, 1.1, 0.08), Vector3.new(tagX, tagY, panelFront))
+	tag.Color = Color3.fromRGB(250, 238, 140)
+
+	local surface = Instance.new("SurfaceGui")
+	surface.Face = Enum.NormalId.Back
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 64
+	surface.Parent = tag
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.TextColor3 = Color3.fromRGB(28, 26, 20)
+	label.Text = TvCatalog.formatValue(build.Tv.Value)
+	label.Parent = surface
 end
 
 local builders: { [string]: (Build) -> () } = {}
@@ -269,6 +330,124 @@ function builders.oled(build: Build)
 	part(build, "Base", Vector3.new(w * 0.62, 0.22, 1.8), Vector3.new(0, 0.11, 0))
 end
 
+-- Same panel as an lcd but standing on two splayed feet at the ends rather than a centre
+-- neck, which is the main thing that tells two flatscreens apart at a glance.
+function builders.lcdFeet(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.6
+	local centreY = panelBottom + h / 2 + 0.4
+
+	part(build, "Panel", Vector3.new(w + 0.5, h + 0.5, 0.34), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.22))
+	light(build, glass, 1.2, 17)
+
+	for _, sx in { -1, 1 } do
+		local foot = part(build, "Foot", Vector3.new(0.4, panelBottom, 2.4), Vector3.zero)
+		foot.CFrame = CFrame.new(sx * w * 0.36, panelBottom / 2, 0)
+			* CFrame.Angles(0, 0, math.rad(sx * -9))
+		foot.Color = Color3.fromRGB(140, 144, 152)
+		foot.Material = Enum.Material.Metal
+	end
+end
+
+-- Flatscreen with a soundbar sitting under it.
+function builders.soundbar(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local barHeight = 1.1
+	local panelBottom = barHeight + 1.4
+	local centreY = panelBottom + h / 2 + 0.3
+
+	part(build, "Panel", Vector3.new(w + 0.25, h + 0.25, 0.2), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.13))
+	light(build, glass, 1.5, 20)
+
+	local blade = part(
+		build,
+		"Blade",
+		Vector3.new(w * 0.4, panelBottom, 0.22),
+		Vector3.new(0, panelBottom / 2, 0)
+	)
+	blade.Color = Color3.fromRGB(150, 154, 162)
+	blade.Material = Enum.Material.Metal
+
+	local bar = part(
+		build,
+		"Soundbar",
+		Vector3.new(w * 0.78, barHeight, 1.6),
+		Vector3.new(0, barHeight / 2, 0.6)
+	)
+	bar.Color = Color3.fromRGB(34, 36, 42)
+	bar.Material = Enum.Material.Fabric
+
+	-- Grille slots along the bar.
+	for index = 1, 5 do
+		local slot = part(
+			build,
+			"BarSlot",
+			Vector3.new(w * 0.1, 0.4, 0.08),
+			Vector3.new((index - 3) * w * 0.14, barHeight / 2, 0.6 + 0.82)
+		)
+		slot.Color = Color3.fromRGB(22, 24, 28)
+	end
+end
+
+-- Curved screen, faked with three angled segments. Reads as a curve from the front and
+-- costs three parts instead of a mesh.
+function builders.curved(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local panelBottom = 1.8
+	local centreY = panelBottom + h / 2 + 0.4
+	local segmentW = w / 3
+
+	for index = -1, 1 do
+		local angle = math.rad(index * -11)
+		local x = index * segmentW
+		-- Push the outer segments back so the middle sits proudest.
+		local z = -math.abs(index) * 0.5
+
+		local panel =
+			part(build, "PanelSegment", Vector3.new(segmentW + 0.3, h + 0.4, 0.3), Vector3.zero)
+		panel.CFrame = CFrame.new(x, centreY, z) * CFrame.Angles(0, angle, 0)
+
+		local glass = part(build, "Screen", Vector3.new(segmentW, h, 0.16), Vector3.zero)
+		glass.CFrame = CFrame.new(x, centreY, z)
+			* CFrame.Angles(0, angle, 0)
+			* CFrame.new(0, 0, 0.2)
+		glass.Color = build.Tv.Screen
+		glass.Material = Enum.Material.Neon
+		if index == 0 then
+			light(build, glass, 1.4, 19)
+		end
+	end
+
+	pedestal(build, panelBottom, w, true)
+end
+
+-- No stand: bracketed off a wall plate behind it, floating flush like a showroom mount.
+function builders.wallmount(build: Build)
+	local w, h = build.ScreenWidth, build.ScreenHeight
+	local centreY = 3.4 + h / 2
+
+	part(build, "Panel", Vector3.new(w + 0.2, h + 0.2, 0.16), Vector3.new(0, centreY, 0))
+	local glass = screen(build, w, h, Vector3.new(0, centreY, 0.1))
+	light(build, glass, 1.8, 24)
+
+	-- Plate and arm behind, plus a post to the floor so it isn't floating in mid-air.
+	local plate =
+		part(build, "WallPlate", Vector3.new(w * 0.34, h * 0.5, 0.4), Vector3.new(0, centreY, -1.1))
+	plate.Color = Color3.fromRGB(48, 50, 58)
+	plate.Material = Enum.Material.Metal
+
+	local arm = part(build, "Arm", Vector3.new(0.5, 0.5, 1.2), Vector3.new(0, centreY, -0.6))
+	arm.Color = Color3.fromRGB(70, 74, 84)
+	arm.Material = Enum.Material.Metal
+
+	local post =
+		part(build, "Post", Vector3.new(1.2, centreY, 0.8), Vector3.new(0, centreY / 2, -1.4))
+	post.Color = Color3.fromRGB(58, 60, 70)
+	post.Material = Enum.Material.Metal
+end
+
 -- A projector box throwing a beam at a floating screen.
 function builders.projector(build: Build)
 	local w, h = build.ScreenWidth * 1.15, build.ScreenHeight * 1.15
@@ -432,6 +611,8 @@ function TvBuilder.build(score: number): Model
 		Tv = tv,
 		ScreenWidth = size.X,
 		ScreenHeight = size.Y,
+		-- Fixed multiplier so consecutive scores get well-separated seeds.
+		Rng = Random.new(score * 7919),
 	}
 
 	local root = Instance.new("Part")
@@ -452,6 +633,13 @@ function TvBuilder.build(score: number): Model
 		builder = builders.lcd
 	end
 	builder(build)
+
+	-- Hang the shop dressing on whatever the builder produced. Positioned off the screen it
+	-- found, so it works for every style without each one having to place tags itself.
+	local glass = model:FindFirstChild("Screen")
+	if glass and glass:IsA("BasePart") then
+		trimmings(build, glass.Position.Y, math.max(glass.Size.X, 2), glass.Position.Z)
+	end
 
 	return model
 end

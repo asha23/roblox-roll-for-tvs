@@ -12,6 +12,7 @@ local UserInputService = game:GetService("UserInputService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local DiceTiers = require(Shared:WaitForChild("DiceTiers"))
 local Remotes = require(Shared:WaitForChild("Remotes"))
 local TvCatalog = require(Shared:WaitForChild("TvCatalog"))
 
@@ -25,10 +26,13 @@ local RollController = {
 
 local rollButton: TextButton
 local buttonSubtitle: TextLabel
+local paidButton: TextButton
+local toast: TextLabel
 local card: Frame
 local cardRoll: TextLabel
 local cardTvName: TextLabel
 local cardDetail: TextLabel
+local cardWarning: TextLabel
 local modal: Frame
 local modalText: TextLabel
 local acceptButton: TextButton
@@ -49,7 +53,7 @@ local lastRequestClock = 0
 
 -- The bottom-left column: result card on the floor, upgrade prompt stacked on top of it.
 local CARD_MARGIN = 24
-local CARD_HEIGHT = 186
+local CARD_HEIGHT = 212
 local CARD_WIDTH = 360
 
 local function roundCorner(instance: Instance, radius: number)
@@ -119,6 +123,17 @@ local function onRollResult(result: any)
 		-- Lifted, not raw: the low-score screen colours are near-black and vanished here.
 		cardTvName.TextColor3 = readable(tv.Screen)
 		cardDetail.Text = `{tv.Rarity} · {TvCatalog.formatValue(tv.Value)} · score {result.Score}`
+	end
+
+	-- Rolling a 1 costs you a level on everything you already owned.
+	local downgraded = tonumber(result.Downgraded) or 0
+	if result.IsMinFace and downgraded > 0 then
+		local plural = if downgraded == 1 then "TV" else "TVs"
+		cardWarning.Text = `Rolled a 1 — {downgraded} {plural} dropped a level!`
+	elseif result.IsMinFace then
+		cardWarning.Text = "Rolled a 1 — nothing to lose yet."
+	else
+		cardWarning.Text = ""
 	end
 
 	task.delay(2.5, function()
@@ -253,6 +268,69 @@ local function buildResultCard(gui: ScreenGui)
 	cardDetail.TextColor3 = Color3.fromRGB(168, 176, 190)
 	cardDetail.Text = ""
 	cardDetail.Parent = card
+
+	cardWarning = Instance.new("TextLabel")
+	cardWarning.Position = UDim2.new(0, 12, 0, 168)
+	cardWarning.Size = UDim2.new(1, -24, 0, 32)
+	cardWarning.BackgroundTransparency = 1
+	cardWarning.Font = Enum.Font.GothamBold
+	cardWarning.TextSize = 15
+	cardWarning.TextWrapped = true
+	cardWarning.TextColor3 = Color3.fromRGB(255, 128, 112)
+	cardWarning.Text = ""
+	cardWarning.Parent = card
+end
+
+-- Bottom-right stack, above the roll button: the paid upgrade and a toast for its feedback.
+local function buildPaidUpgrade(gui: ScreenGui)
+	paidButton = Instance.new("TextButton")
+	paidButton.Name = "PaidUpgradeButton"
+	paidButton.AnchorPoint = Vector2.new(1, 1)
+	paidButton.Position = UDim2.new(1, -24, 1, -120)
+	paidButton.Size = UDim2.fromOffset(240, 42)
+	paidButton.BackgroundColor3 = Color3.fromRGB(52, 168, 96)
+	paidButton.BorderSizePixel = 0
+	paidButton.Font = Enum.Font.GothamBold
+	paidButton.TextSize = 15
+	paidButton.TextColor3 = Color3.new(1, 1, 1)
+	paidButton.Text = `Upgrade dice · {Config.Monetisation.DisplayPrice} R$`
+	paidButton.Parent = gui
+	roundCorner(paidButton, 10)
+
+	toast = Instance.new("TextLabel")
+	toast.Name = "Toast"
+	toast.AnchorPoint = Vector2.new(1, 1)
+	toast.Position = UDim2.new(1, -24, 1, -172)
+	toast.Size = UDim2.fromOffset(320, 38)
+	toast.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
+	toast.BackgroundTransparency = 0.1
+	toast.BorderSizePixel = 0
+	toast.Font = Enum.Font.GothamMedium
+	toast.TextSize = 14
+	toast.TextColor3 = Color3.new(1, 1, 1)
+	toast.TextWrapped = true
+	toast.Text = ""
+	toast.Visible = false
+	toast.Parent = gui
+	roundCorner(toast, 8)
+end
+
+local toastToken = 0
+
+local function showToast(message: string)
+	if type(message) ~= "string" or message == "" then
+		return
+	end
+	toastToken += 1
+	local token = toastToken
+	toast.Text = message
+	toast.Visible = true
+	task.delay(4, function()
+		-- Only clear it if a newer message hasn't replaced this one.
+		if token == toastToken then
+			toast.Visible = false
+		end
+	end)
 end
 
 local function buildUpgradeModal(gui: ScreenGui)
@@ -321,6 +399,7 @@ function RollController:Init()
 
 	buildRollButton(gui)
 	buildResultCard(gui)
+	buildPaidUpgrade(gui)
 	buildUpgradeModal(gui)
 
 	gui.Parent = player:WaitForChild("PlayerGui")
@@ -344,13 +423,27 @@ function RollController:Start()
 		end
 	end)
 
+	paidButton.MouseButton1Click:Connect(function()
+		Remotes.Events.RequestPaidUpgrade:FireServer()
+	end)
+
 	Remotes.Events.RollResult.OnClientEvent:Connect(onRollResult)
 	Remotes.Events.DiceUpgradeOffered.OnClientEvent:Connect(onUpgradeOffered)
+	Remotes.Events.Notice.OnClientEvent:Connect(showToast)
 
 	Remotes.Events.DataChanged.OnClientEvent:Connect(function(playerData)
-		if type(playerData) == "table" and playerData.Rolls then
+		if type(playerData) ~= "table" then
+			return
+		end
+		if playerData.Rolls then
 			local rolls = playerData.Rolls
 			buttonSubtitle.Text = `{rolls} {if rolls == 1 then "roll" else "rolls"} · press R`
+		end
+		-- Hide the paid upgrade once there's nothing left to buy.
+		if playerData.DiceTier then
+			local atMax = playerData.DiceTier >= #DiceTiers.Tiers
+			paidButton.Visible = not atMax
+			toast.Position = UDim2.new(1, -24, 1, if atMax then -120 else -172)
 		end
 	end)
 end
