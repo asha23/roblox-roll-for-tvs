@@ -42,6 +42,11 @@ local busy = false
 -- owner of what's on screen. Without this, an old roll's timer hides a newer result.
 local rollToken = 0
 
+-- When the last request went out, so the button doesn't come back before the server's
+-- cooldown has expired. The die lands sooner than the cooldown ends, and a click in that
+-- gap would be silently dropped by the server.
+local lastRequestClock = 0
+
 local function roundCorner(instance: Instance, radius: number)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, radius)
@@ -103,9 +108,15 @@ local function onRollResult(result: any)
 		end
 	end)
 
-	-- An upgrade offer arrives immediately after the result, while the spin above is
-	-- still running. If it's up, leave the button disabled — the modal owns input now.
-	if not modal.Visible then
+	-- Hold the button until the server would actually accept another roll.
+	local remaining = Config.Roll.CooldownSeconds - (os.clock() - lastRequestClock)
+	if remaining > 0 then
+		task.wait(remaining)
+	end
+
+	-- An upgrade offer arrives immediately after the result, while the die is still in
+	-- the air. If it's up, leave the button disabled — the modal owns input now.
+	if token == rollToken and not modal.Visible then
 		busy = false
 		setButtonEnabled(true)
 	end
@@ -116,6 +127,7 @@ local function requestRoll()
 		return
 	end
 	busy = true
+	lastRequestClock = os.clock()
 	setButtonEnabled(false)
 	Remotes.Events.RequestRoll:FireServer()
 

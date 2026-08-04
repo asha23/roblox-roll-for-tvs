@@ -166,12 +166,19 @@ function DiceController:Play(value: number, bodyColor: Color3?)
 	end
 	die.CFrame = CFrame.new(landing) * landOrientation
 
-	-- Fade out rather than vanish.
+	-- Fade out rather than vanish. A part's Transparency has no effect on a SurfaceGui
+	-- drawn on it, so the pips have to be switched off separately or they'd hang in the
+	-- air as floating dots while the cube behind them faded away.
 	task.delay(LINGER_SECONDS, function()
-		if die.Parent then
-			TweenService:Create(die, TweenInfo.new(0.4), { Transparency = 1, Size = Vector3.zero })
-				:Play()
+		if not die.Parent then
+			return
 		end
+		for _, child in die:GetChildren() do
+			if child:IsA("SurfaceGui") then
+				child.Enabled = false
+			end
+		end
+		TweenService:Create(die, TweenInfo.new(0.4), { Transparency = 1 }):Play()
 	end)
 	Debris:AddItem(die, LINGER_SECONDS + 0.5)
 end
