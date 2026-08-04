@@ -43,6 +43,35 @@ local SEED = 20240804
 
 local rooms: Model
 
+local function gridSize(): (number, number)
+	local cell = B.CellSize
+	return math.floor(SPAN_X / cell), math.floor((END_Z - SHELL_START) / cell)
+end
+
+local function cellCentre(column: number, row: number): Vector3
+	local cell = B.CellSize
+	return Vector3.new(
+		-B.HalfWidth + (column + 0.5) * cell,
+		FLOOR_Y,
+		SHELL_START + (row + 0.5) * cell
+	)
+end
+
+-- Where the hidden bonus TV lives: a back corner room, far from the shop door.
+--
+-- Deliberately a pure function of Config with no reliance on Init having run, so
+-- BonusTvService can ask for it regardless of which service starts first. Deriving the same
+-- coordinates independently in both files would be a drift bug waiting to happen.
+function BackroomsService.bonusCell(): (number, number)
+	local columns, rowCount = gridSize()
+	return math.max(columns - 2, 0), math.max(rowCount - 2, 0)
+end
+
+function BackroomsService.bonusPosition(): Vector3
+	local column, row = BackroomsService.bonusCell()
+	return cellCentre(column, row)
+end
+
 local function block(name: string, size: Vector3, position: Vector3, colour: Color3): Part
 	local part = Instance.new("Part")
 	part.Name = name
@@ -129,6 +158,7 @@ local function buildMaze()
 
 	local columns = math.floor(SPAN_X / cell)
 	local rowCount = math.floor(shellDepth() / cell)
+	local bonusColumn, bonusRow = BackroomsService.bonusCell()
 
 	for column = 0, columns - 1 do
 		for row = 0, rowCount - 1 do
@@ -139,6 +169,12 @@ local function buildMaze()
 			-- the shop straight into a wall.
 			local nearDoor = row <= 1 and math.abs(x) < cell * 1.5
 			if nearDoor then
+				continue
+			end
+
+			-- Leave the bonus room itself empty, so the TV isn't buried inside a wall or a
+			-- pillar and the room reads as deliberately different when you find it.
+			if column == bonusColumn and row == bonusRow then
 				continue
 			end
 

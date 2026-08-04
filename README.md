@@ -57,7 +57,8 @@ window (**View → Output**):
 ```
 [ShopService] Built the shop (N parts).
 [BackroomsService] Built the Backrooms (N parts).
-[Server] Started 6 service(s).
+[BonusTvService] Hidden TV placed at 97, 226.
+[Server] Started 7 service(s).
 [Client] Started 3 controller(s).
 ```
 
@@ -122,6 +123,8 @@ asserts the invariants that would silently break the game if the balance data dr
   trusted
 - the die is a real die: opposite faces sum to 7 with exactly opposite normals, all six normals
   and surfaces are distinct, face *n* has *n* pips, and no pip sits outside its face
+- the bonus is worth the walk, every sound is set and looks like an asset reference, and the
+  maze grid is big enough for the bonus room to exist outside the cleared area by the door
 - `GrantWithoutPaying` is off, so a build that hands out free dice upgrades can't ship
 - the roll-a-1 penalty costs something but can't wipe out a whole tier in one go
 - the Backrooms are at least as wide as the shop, so the flank walls aren't negative width
@@ -297,6 +300,48 @@ Two things worth knowing if you edit it:
   with one at the origin. With no baseplate at all (a place from `rojo build`) it lays pavement
   instead.
 
+### The hidden bonus TV
+
+One **Infinite Screen** stands on a plinth in a back room of the Backrooms, at roughly
+`x=97, z=226` — the far right-back corner, about 196 studs from the shop door. Walk into it and
+you get fireworks and `Config.Bonus.Value` (30,000) added to your total.
+[BonusTvService.luau](src/server/services/BonusTvService.luau).
+
+Deliberate details:
+
+- **Claimable once per player, not once per server**, so all four can find it. The claim is
+  tracked server-side, because the trigger is a `Touched` part and a modified client could fire
+  `Touched` over and over.
+- **The bonus is banked in `BonusValue`, not just added to `TotalValue`.** `DowngradeCollection`
+  recomputes `TotalValue` from the TV list, so a bonus folded only into the total would be
+  silently erased the next time someone rolled a 1.
+- **The maze leaves the bonus room empty** — no walls or pillars in that cell — so the TV can't
+  end up buried inside a wall, and the room reads as deliberately different when you find it.
+- **`bonusPosition()` is a pure function of `Config`** with no reliance on `Init` having run, so
+  the placement and the maze's cleared cell can't drift apart. Working the coordinates out
+  independently in both files would be a bug waiting to happen.
+- **Rockets are capped under the ceiling** (8.5 studs against a 14-stud Backrooms ceiling); one
+  that clipped through the tiles would look broken rather than celebratory.
+- Fireworks run **on the server**, so everyone sees them, not just whoever set them off.
+
+It's worth 30,000 against the Infinite Screen's own 50,000 — a big prize, not a win button.
+
+### Sound
+
+`Config.Sounds` uses **Roblox's own built-in client sounds** (`rbxasset://sounds/...`), so the
+game makes noise without anything needing to be uploaded first. Swap any entry for
+`rbxassetid://<id>` to use your own audio.
+
+Roblox ships no dice-clatter sound, so `DiceController` builds one: a short click repeated at
+randomised pitch, thinning out and slowing as the die settles — which is roughly what a
+tumbling die actually sounds like. `RattleClicks` controls how many. There's a thud on landing.
+
+Note this uses `math.random`, unlike the TV models' seeded `Random` — every throw *should* sound
+slightly different, whereas a telly must not change shape between rebuilds.
+
+The dice sounds are client-side, like the die itself, so only the roller hears them. The
+fireworks and bonus chime are server-side and audible to everyone.
+
 ### The 3D die
 
 The die is a real part thrown into the world, with pips drawn on all six faces. It is
@@ -420,6 +465,7 @@ the button but can't choose its own outcome, and a 1.5s cooldown is enforced ser
 | [ShopService.luau](src/server/services/ShopService.luau) | Builds the whole shop interior, lighting props and spawn |
 | [BackroomsService.luau](src/server/services/BackroomsService.luau) | Builds the Backrooms maze outside the shopfront |
 | [MonetisationService.luau](src/server/services/MonetisationService.luau) | Paid dice upgrades and receipt handling |
+| [BonusTvService.luau](src/server/services/BonusTvService.luau) | The hidden Backrooms TV, its trigger and the fireworks |
 | [PlayerDataService.luau](src/server/services/PlayerDataService.luau) | Owns dice tier + collection; the only thing that mutates player state |
 | [RollService.luau](src/server/services/RollService.luau) | Rolls, awards, cooldown, upgrade offers |
 | [TvDisplayService.luau](src/server/services/TvDisplayService.luau) | Four podiums, built in code, showing each player's best TV |

@@ -21,6 +21,10 @@ export type PlayerData = {
 	Tvs: { number },
 	BestScore: number,
 	TotalValue: number,
+	-- Value from things that aren't TVs, e.g. the hidden Backrooms bonus. Held separately
+	-- because DowngradeCollection recomputes TotalValue from the Tvs list — folding a bonus
+	-- into TotalValue alone would silently erase it the next time someone rolled a 1.
+	BonusValue: number,
 	Rolls: number,
 	-- True between rolling a 6 and choosing whether to take the upgrade.
 	PendingUpgrade: boolean,
@@ -76,6 +80,19 @@ function PlayerDataService:AwardTv(player: Player, score: number)
 	self:Sync(player)
 end
 
+-- Adds value that isn't a TV. Survives a later downgrade because it's banked in BonusValue
+-- as well as the running total.
+function PlayerDataService:AddBonus(player: Player, amount: number)
+	local playerData = data[player]
+	if not playerData or amount <= 0 then
+		return
+	end
+
+	playerData.BonusValue += amount
+	playerData.TotalValue += amount
+	self:Sync(player)
+end
+
 -- Knocks every TV already collected down `levels`, floored at the worst TV in the game.
 -- Returns how many actually moved, so the client can say nothing happened to an empty
 -- collection rather than claiming a penalty that didn't land.
@@ -100,7 +117,7 @@ function PlayerDataService:DowngradeCollection(player: Player, levels: number): 
 
 	-- Recompute rather than adjust: BestScore may now belong to a different TV entirely,
 	-- and subtracting deltas would drift out of step with the list.
-	local total, best = 0, 0
+	local total, best = playerData.BonusValue, 0
 	for _, score in playerData.Tvs do
 		total += TvCatalog.get(score).Value
 		if score > best then
@@ -137,6 +154,7 @@ function PlayerDataService:Start()
 			Tvs = {},
 			BestScore = 0,
 			TotalValue = 0,
+			BonusValue = 0,
 			Rolls = 0,
 			PendingUpgrade = false,
 		}

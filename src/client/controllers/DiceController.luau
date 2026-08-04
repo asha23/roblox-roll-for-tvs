@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
 local DiceGeometry = require(Shared:WaitForChild("DiceGeometry"))
 
 local player = Players.LocalPlayer
@@ -88,6 +89,48 @@ local function buildDie(bodyColor: Color3): Part
 
 	buildPips(die)
 	return die
+end
+
+-- Roblox ships no dice-clatter sound, so make one: a short click repeated at randomised pitch
+-- and thinning out as the die slows is what a tumbling die actually sounds like. Parented to
+-- the die so it's positional, and local like the die itself.
+--
+-- math.random rather than a seeded Random on purpose — every throw should sound a bit
+-- different, unlike the TV models, which must not change between rebuilds.
+local function playRattle(die: Part, duration: number)
+	task.spawn(function()
+		local clicks = math.max(Config.Sounds.RattleClicks, 1)
+		for index = 1, clicks do
+			if not die.Parent then
+				return
+			end
+
+			local click = Instance.new("Sound")
+			click.SoundId = Config.Sounds.DiceRattle
+			-- Quieter as it settles.
+			click.Volume = 0.2 + 0.3 * (1 - (index - 1) / clicks)
+			click.PlaybackSpeed = 0.8 + math.random() * 0.8
+			click.RollOffMaxDistance = 70
+			click.Parent = die
+			click:Play()
+			Debris:AddItem(click, 2)
+
+			-- Gaps grow towards the end, so the clatter slows rather than stopping dead.
+			local spacing = (duration / clicks) * (0.6 + (index / clicks) * 0.9)
+			task.wait(spacing)
+		end
+	end)
+end
+
+local function playLanding(die: Part)
+	local thud = Instance.new("Sound")
+	thud.SoundId = Config.Sounds.DiceLand
+	thud.Volume = 0.45
+	thud.PlaybackSpeed = 1.35
+	thud.RollOffMaxDistance = 90
+	thud.Parent = die
+	thud:Play()
+	Debris:AddItem(thud, 3)
 end
 
 type Throw = {
@@ -204,6 +247,8 @@ function DiceController:Play(value: number, bodyColor: Color3?)
 	die.CFrame = CFrame.new(throw.Start) * landOrientation
 	die.Parent = Workspace
 
+	playRattle(die, FLIGHT_SECONDS)
+
 	local startClock = os.clock()
 	local connection: RBXScriptConnection
 
@@ -235,6 +280,7 @@ function DiceController:Play(value: number, bodyColor: Color3?)
 		connection:Disconnect()
 	end
 	die.CFrame = CFrame.new(landing) * landOrientation
+	playLanding(die)
 
 	-- Fade out rather than vanish. A part's Transparency has no effect on a SurfaceGui
 	-- drawn on it, so the pips have to be switched off separately or they'd hang in the

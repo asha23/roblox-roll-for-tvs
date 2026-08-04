@@ -25,6 +25,23 @@ local Config = {
 		GrantWithoutPaying = false,
 	},
 
+	Bonus = {
+		-- One hidden TV deep in the Backrooms, worth this much. Claimable once per player.
+		Value = 30000,
+	},
+
+	-- Roblox's own built-in client sounds, so the game makes noise without anything needing
+	-- to be uploaded first. Swap any of these for "rbxassetid://<id>" to use your own audio.
+	Sounds = {
+		-- There is no dice-clatter built in, so DiceController fakes one by repeating a short
+		-- click at randomised pitch. RattleClicks is how many.
+		DiceRattle = "rbxasset://sounds/switch3.wav",
+		RattleClicks = 10,
+		DiceLand = "rbxasset://sounds/bass.mp3",
+		Firework = "rbxasset://sounds/bass.mp3",
+		Bonus = "rbxasset://sounds/electronicpingshort.wav",
+	},
+
 	Penalty = {
 		-- Rolling the lowest face knocks every TV already collected down this many levels.
 		DowngradeLevels = 1,

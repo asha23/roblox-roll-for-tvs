@@ -326,6 +326,44 @@ check(
 )
 check("backrooms ceiling is walkable height", back.CeilingHeight >= 8)
 
+print("== bonus and sounds ==")
+check("the hidden TV is worth something", Config.Bonus.Value > 0)
+-- Worth the walk, without insisting it beats the top TV: the bonus is deliberately 30,000
+-- against the Infinite Screen's 50,000, so finding it is a big prize rather than a win button.
+check(
+	"the bonus is worth more than the best Gold-tier TV",
+	Config.Bonus.Value >= TvCatalog.get(24).Value,
+	`bonus {Config.Bonus.Value} vs {TvCatalog.get(24).Value}`
+)
+
+for _, name in { "DiceRattle", "DiceLand", "Firework", "Bonus" } do
+	local id = Config.Sounds[name]
+	check(`sound {name} is set`, type(id) == "string" and #id > 0)
+	check(
+		`sound {name} looks like an asset reference`,
+		type(id) == "string"
+			and (id:find("^rbxasset://") ~= nil or id:find("^rbxassetid://") ~= nil),
+		`got "{tostring(id)}"`
+	)
+end
+check("the rattle plays at least a couple of clicks", Config.Sounds.RattleClicks >= 2)
+
+-- BonusTvService puts the prize at grid cell (columns-2, rowCount-2). The grid has to be big
+-- enough for that to be a real cell, and far enough back that it isn't in the corridor kept
+-- clear by the shop door.
+local shellDepth = back.Depth - 1.5
+local columns = math.floor((back.HalfWidth * 2) / back.CellSize)
+local rowCount = math.floor(shellDepth / back.CellSize)
+check(
+	`maze grid is {columns}x{rowCount}, big enough for a back corner`,
+	columns >= 4 and rowCount >= 4
+)
+check(
+	"the bonus room isn't in the cleared area by the door",
+	rowCount - 2 > 1,
+	"rows 0 and 1 near the door are kept empty"
+)
+
 print(`\n{checks - failures}/{checks} checks passed`)
 if failures > 0 then
 	print(`{failures} FAILED`)
