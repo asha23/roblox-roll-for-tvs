@@ -1,5 +1,7 @@
 # Roll For TVs
 
+Repo: <https://github.com/asha23/roblox-roll-for-tvs> (private)
+
 Code lives in `src/` as real `.luau` files. Rojo syncs them into Roblox Studio, so you edit
 in your editor and Studio updates live. Studio is only for building the map, testing, and publishing.
 
@@ -79,6 +81,19 @@ The server creates the instance and the client waits for it — nothing to place
 - `HudController` — a coin counter in the top-right, built in code, synced to the server.
 
 Both are working examples, safe to gut and replace.
+
+## CI
+
+A GitHub Actions workflow sits at `.github/workflows/ci.yml`, untracked — pushing it needs a
+token scope the local `gh` login doesn't have. Enable it with:
+
+```sh
+gh auth refresh -s workflow
+git add .github && git commit -m "Add CI workflow" && git push
+```
+
+It formats-checks, lints, and builds a place file on every push and PR, uploading the
+`.rbxlx` as a build artifact.
 
 ## Notes
 
