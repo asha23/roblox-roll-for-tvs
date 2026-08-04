@@ -65,7 +65,9 @@ local function buildPodium(slot: number): Podium
 	screen.CanCollide = false
 
 	local surface = Instance.new("SurfaceGui")
-	surface.Face = Enum.NormalId.Front
+	-- Back, not Front: a Part's Front face normal points down -Z, and the podiums sit at
+	-- negative Z relative to spawn, so Front would render the text facing away from players.
+	surface.Face = Enum.NormalId.Back
 	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	surface.PixelsPerStud = 48
 	surface.AlwaysOnTop = false
@@ -76,8 +78,10 @@ local function buildPodium(slot: number): Podium
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamBold
 	label.TextScaled = true
-	label.TextColor3 = Color3.new(0, 0, 0)
-	label.TextTransparency = 0.25
+	-- White on a black stroke, because the screen colour behind it ranges from near-black
+	-- (score 1) to bright neon (score 30) and plain black text vanishes on the dark end.
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextStrokeTransparency = 0
 	label.Text = "EMPTY"
 	label.Parent = surface
 
