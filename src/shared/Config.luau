@@ -21,6 +21,18 @@ local Config = {
 		CooldownSeconds = 1.5,
 	},
 
+	-- Interior of the shop, in studs. The podium row has to fit inside these bounds with
+	-- room to walk around it — tests/gamelogic.luau checks that it does.
+	Shop = {
+		HalfWidth = 70,
+		BackZ = -60,
+		FrontZ = 30,
+		WallHeight = 26,
+		DoorWidth = 16,
+		-- Walking surface. Everything stands on this.
+		FloorY = 0,
+	},
+
 	Podiums = {
 		-- One podium per player slot, laid out in a row facing spawn. Spacing has to clear
 		-- the widest TV in the catalog — a Diamond-tier screen is roughly 15 studs across.

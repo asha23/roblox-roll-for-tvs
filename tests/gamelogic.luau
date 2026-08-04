@@ -49,6 +49,7 @@ end
 local DiceTiers = load("DiceTiers")
 local TvCatalog = load("TvCatalog")
 local DiceGeometry = load("DiceGeometry")
+local Config = load("Config")
 
 local failures = 0
 local checks = 0
@@ -230,6 +231,46 @@ for value = 1, 6 do
 		)
 	end
 end
+
+print("== the podium row fits inside the shop ==")
+-- Resizing the shop or widening the podiums can push a display stand through a wall, which
+-- is invisible in code and obvious-but-annoying in Studio. Check the arithmetic instead.
+local shop = Config.Shop
+local plinth = Config.Podiums.PlinthSize
+local slots = Config.MaxPlayers
+
+check("podiums are as wide as the player cap", slots == Config.MaxPlayers)
+
+for slot = 1, slots do
+	local centre = (slot - (slots + 1) / 2) * Config.Podiums.Spacing
+	local left, right = centre - plinth.X / 2, centre + plinth.X / 2
+	check(
+		`podium {slot} is inside the side walls`,
+		left > -shop.HalfWidth and right < shop.HalfWidth,
+		`spans {string.format("%.1f..%.1f", left, right)}, walls at +/-{shop.HalfWidth}`
+	)
+end
+
+-- Adjacent podiums must not overlap each other.
+check(
+	"podium spacing clears the plinth width",
+	Config.Podiums.Spacing > plinth.X,
+	`spacing {Config.Podiums.Spacing} <= plinth {plinth.X}`
+)
+
+local podiumZ = Config.Podiums.Origin.Z
+check(
+	"podium row is inside the front and back walls",
+	podiumZ - plinth.Z / 2 > shop.BackZ and podiumZ + plinth.Z / 2 < shop.FrontZ,
+	`row at z={podiumZ}, walls at {shop.BackZ}..{shop.FrontZ}`
+)
+check(
+	"there is room to walk behind the podiums",
+	(podiumZ - plinth.Z / 2) - shop.BackZ >= 6,
+	`only {(podiumZ - plinth.Z / 2) - shop.BackZ} studs`
+)
+check("doorway is narrower than the shopfront", shop.DoorWidth < shop.HalfWidth * 2)
+check("shop is tall enough for the biggest TV", shop.WallHeight > 14)
 
 print(`\n{checks - failures}/{checks} checks passed`)
 if failures > 0 then

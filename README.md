@@ -50,11 +50,13 @@ Leave that running, then in Studio:
    `ReplicatedStorage.Shared`.
 4. Press **F5** (or Home → Play) to playtest.
 
-You should see a **ROLL** button at the bottom of the screen, a stats panel top-right, and four
-podiums in front of you. In the Output window (**View → Output**):
+You spawn just inside the door of a TV shop, looking down the room at four display podiums. A
+**ROLL** button sits at the bottom of the screen and a stats panel top-right. In the Output
+window (**View → Output**):
 
 ```
-[Server] Started 3 service(s).
+[ShopService] Built the shop (N parts).
+[Server] Started 4 service(s).
 [Client] Started 3 controller(s).
 ```
 
@@ -119,6 +121,9 @@ asserts the invariants that would silently break the game if the balance data dr
   trusted
 - the die is a real die: opposite faces sum to 7 with exactly opposite normals, all six normals
   and surfaces are distinct, face *n* has *n* pips, and no pip sits outside its face
+- the podium row fits inside the shop — no plinth pokes through a side wall, adjacent podiums
+  don't overlap, and there's walking room behind them. Resize the shop and this tells you
+  immediately instead of you finding it in Studio
 
 If you add a dice tier or TVs, run this before playtesting — it catches an off-by-one in
 `ScoreOffset` in a second, which is otherwise a subtle "some TVs are unobtainable" bug, and it
@@ -209,6 +214,42 @@ cashed in later. Declining is allowed and just clears the flag.
 
 At Diamond there's no tier above, so no offer is made — a 6 is simply a 6.
 
+### The shop
+
+The game is set inside a TV shop, built entirely in code by
+[ShopService.luau](src/server/services/ShopService.luau) from the numbers in `Config.Shop` —
+nothing to model in Studio, and the room resizes by changing `HalfWidth`, `BackZ` and `FrontZ`.
+
+Looking in from the street:
+
+```
+z = -60   back wall · neon shop sign · four display podiums in front of it
+z =   0   shop floor · shelving down both side walls · video wall left · counter right
+z = +30   shopfront glass with a doorway · spawn just inside, facing the podiums
+```
+
+What's in there: marble floor in two shades with a runner leading your eye to the podiums,
+skirting round the inside edge, twelve lit ceiling panels, a neon shop sign on the back wall,
+a 4×3 video wall of demo screens each a different colour, five shelf units stocked with little
+boxy tellies, a checkout counter with a till and leaflets, and a glass shopfront with sills,
+mullions and a signed header that reads from both sides.
+
+`Lighting` in [default.project.json](default.project.json) is tuned for an interior — dark
+`Ambient` so the shop's own lights do the work, plus `Atmosphere`, `BloomEffect` (so the neon
+and the TV screens bloom), `ColorCorrectionEffect` and a touch of `SunRaysEffect` through the
+shopfront.
+
+Two things worth knowing if you edit it:
+
+- **Every decorative light has `Shadows = false`.** There are around two dozen of them, and under
+  Future lighting each shadow-casting light is expensive. The room looks the same lit flatly;
+  the TVs keep their shadows, where it actually reads.
+- **`settleGround` drops Studio's baseplate by one stud.** Its top sits at `y=0`, exactly where
+  the shop floor goes, and two coplanar faces flicker against each other. It also deletes any
+  existing `SpawnLocation` so players can't appear outside the shop — a baseplate template ships
+  with one at the origin. With no baseplate at all (a place from `rojo build`) it lays pavement
+  instead.
+
 ### The 3D die
 
 The die is a real part thrown into the world, with pips drawn on all six faces. It is
@@ -281,6 +322,7 @@ the button but can't choose its own outcome, and a 1.5s cooldown is enforced ser
 | [TvCatalog.luau](src/shared/TvCatalog.luau) | 30 TVs, indexed by score, plus size/value helpers |
 | [TvBuilder.luau](src/shared/TvBuilder.luau) | Builds each TV out of parts, one builder per style |
 | [DiceController.luau](src/client/controllers/DiceController.luau) | Throws the 3D die and lands it on the server's number |
+| [ShopService.luau](src/server/services/ShopService.luau) | Builds the whole shop interior, lighting props and spawn |
 | [PlayerDataService.luau](src/server/services/PlayerDataService.luau) | Owns dice tier + collection; the only thing that mutates player state |
 | [RollService.luau](src/server/services/RollService.luau) | Rolls, awards, cooldown, upgrade offers |
 | [TvDisplayService.luau](src/server/services/TvDisplayService.luau) | Four podiums, built in code, showing each player's best TV |
