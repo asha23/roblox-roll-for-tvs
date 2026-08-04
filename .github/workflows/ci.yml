@@ -9,7 +9,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rokit toolchain
         uses: CompeyDev/setup-rokit@v0.1.2
@@ -24,7 +24,7 @@ jobs:
         run: rojo build --output build.rbxlx
 
       - name: Upload place file
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: place-file
           path: build.rbxlx
