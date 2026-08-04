@@ -1,0 +1,19 @@
+# Wally — the folder itself is kept so Rojo's $path resolves before `wally install`
+/Packages/*
+!/Packages/.gitkeep
+/ServerPackages/
+/DevPackages/
+wally.lock
+
+# Build output
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+*.rbxl.lock
+*.rbxlx.lock
+
+# Editor / OS
+.DS_Store
+.vscode/
+sourcemap.json
