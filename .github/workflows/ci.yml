@@ -20,6 +20,9 @@ jobs:
       - name: Lint
         run: selene src
 
+      - name: Test game logic
+        run: lune run tests/gamelogic
+
       - name: Build place file
         run: rojo build --output build.rbxlx
 

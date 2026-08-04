@@ -7,8 +7,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local EVENTS = {
-	"CoinsChanged",
-	"RoundStateChanged",
+	-- client -> server
+	"RequestRoll",
+	"ChooseDiceUpgrade",
+
+	-- server -> client
+	"RollResult",
+	"DiceUpgradeOffered",
+	"DataChanged",
 }
 
 local FUNCTIONS = {

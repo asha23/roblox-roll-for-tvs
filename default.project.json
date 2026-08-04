@@ -30,6 +30,14 @@
       }
     },
 
+    "Players": {
+      "$className": "Players",
+      "$properties": {
+        "MaxPlayers": 4,
+        "PreferredPlayers": 4
+      }
+    },
+
     "Workspace": {
       "$className": "Workspace",
       "$properties": {
