@@ -297,6 +297,16 @@ check(
 	"turn it back off before shipping"
 )
 check("a display price is set", Config.Monetisation.DisplayPrice > 0)
+check("Enabled is a boolean", type(Config.Monetisation.Enabled) == "boolean")
+-- Not an assertion that it's off — just that turning it on without a product would ship a
+-- button that can only ever apologise.
+if Config.Monetisation.Enabled then
+	check(
+		"monetisation is on, so a product id must be set",
+		Config.Monetisation.DiceUpgradeProductId > 0,
+		"create a Developer Product and paste its id into Config"
+	)
+end
 check(
 	"product id is a non-negative whole number",
 	Config.Monetisation.DiceUpgradeProductId >= 0
@@ -325,6 +335,32 @@ check(
 	"the cleared area by the door is three cells wide"
 )
 check("backrooms ceiling is walkable height", back.CeilingHeight >= 8)
+
+print("== persistence settings ==")
+local dataCfg = Config.Data
+check("player store is named", type(dataCfg.StoreName) == "string" and #dataCfg.StoreName > 0)
+check(
+	"leaderboard store is named",
+	type(dataCfg.LeaderboardName) == "string" and #dataCfg.LeaderboardName > 0
+)
+check(
+	"the two stores are different",
+	dataCfg.StoreName ~= dataCfg.LeaderboardName,
+	"an OrderedDataStore holds integers and can't share a name with the player data store"
+)
+check(
+	"autosave is not aggressive enough to burn the write budget",
+	dataCfg.AutosaveSeconds >= 60,
+	`{dataCfg.AutosaveSeconds}s is too often with a full server`
+)
+check("saves are retried", dataCfg.RetryAttempts >= 2)
+check("retry backoff is positive", dataCfg.RetryBackoffSeconds > 0)
+check(
+	"scoreboard page size is within Roblox's limit",
+	dataCfg.ScoreboardEntries >= 1 and dataCfg.ScoreboardEntries <= 100,
+	"GetSortedAsync caps a page at 100"
+)
+check("scoreboard refresh isn't hammering the store", dataCfg.ScoreboardRefreshSeconds >= 30)
 
 print("== bonus and sounds ==")
 check("the hidden TV is worth something", Config.Bonus.Value > 0)

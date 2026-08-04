@@ -59,6 +59,12 @@ local function grantUpgrade(player: Player): boolean
 end
 
 function MonetisationService:Prompt(player: Player)
+	-- Switched off. Checked here as well as on the client, because the remote is reachable
+	-- whether or not a button exists to fire it.
+	if not Config.Monetisation.Enabled then
+		return
+	end
+
 	local playerData = PlayerDataService:Get(player)
 	if not playerData then
 		return

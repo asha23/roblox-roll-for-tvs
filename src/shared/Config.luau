@@ -14,6 +14,11 @@ local Config = {
 	},
 
 	Monetisation = {
+		-- Hidden for now. Off means no button on screen and the server refuses to prompt;
+		-- the implementation stays put, so turning this on is the only step needed once a
+		-- Developer Product exists.
+		Enabled = false,
+
 		-- Paid dice upgrade. The PRICE IS NOT SET HERE — it lives on the Developer Product
 		-- in Roblox's dashboard. Create a product priced at 25 Robux on the game's page and
 		-- paste its ID below; until then the button explains itself rather than erroring.
@@ -23,6 +28,24 @@ local Config = {
 		-- Local testing only: grants the paid upgrade without taking any Robux, so the flow
 		-- can be exercised in Studio where real purchases don't work. NEVER ship this true.
 		GrantWithoutPaying = false,
+	},
+
+	Data = {
+		-- Bump the version in these names if the saved shape ever changes in a way old
+		-- saves can't satisfy. Renaming the store abandons the old data rather than
+		-- crashing on it.
+		StoreName = "PlayerData_v1",
+		LeaderboardName = "TopScores_v1",
+
+		-- DataStore write limits are per-key and generous but not unlimited; a minute or
+		-- more between autosaves keeps well clear even with a full server.
+		AutosaveSeconds = 120,
+		RetryAttempts = 4,
+		RetryBackoffSeconds = 1.5,
+
+		ScoreboardRefreshSeconds = 60,
+		-- GetSortedAsync page size. 100 is Roblox's ceiling.
+		ScoreboardEntries = 10,
 	},
 
 	Bonus = {

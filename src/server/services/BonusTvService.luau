@@ -2,9 +2,9 @@
 -- The hidden prize: one Infinite Screen standing in a back room of the Backrooms. Walk into
 -- it and you get fireworks and Config.Bonus.Value added to your total.
 --
--- Claimable once per player, not once per server, so four people can each find it. The claim
--- is tracked server-side — the trigger is a Touched part, and a modified client could fire
--- Touched repeatedly, so the guard has to live here rather than in the UI.
+-- Claimable once per player, ever — the flag lives in saved player data, so it survives
+-- rejoining. Tracked server-side because the trigger is a Touched part, which fires many times
+-- during a single walk-through and which a modified client could fire deliberately.
 --
 -- Runs entirely on the server, so everyone sees the fireworks, not just whoever set them off.
 
@@ -45,7 +45,6 @@ local FIREWORK_COLOURS = {
 	Color3.fromRGB(220, 140, 255),
 }
 
-local claimed: { [Player]: boolean } = {}
 local root: Model
 
 local function burstEmitter(colour: Color3): ParticleEmitter
@@ -140,10 +139,13 @@ function BonusTvService:Celebrate(origin: Vector3)
 end
 
 local function claim(player: Player, origin: Vector3)
-	if claimed[player] then
+	-- The claim flag lives in saved player data, not a table here. Once progress persists, an
+	-- in-memory flag would let anyone rejoin and collect the 30,000 again on every visit.
+	-- ClaimBonus returns false if it's already been taken, which also covers the repeated
+	-- Touched events a single walk-through fires.
+	if not PlayerDataService:ClaimBonus(player) then
 		return
 	end
-	claimed[player] = true
 
 	PlayerDataService:AddBonus(player, Config.Bonus.Value)
 	BonusTvService:Celebrate(origin + Vector3.new(0, 2, 0))
@@ -226,10 +228,6 @@ function BonusTvService:Init()
 		if player then
 			claim(player, origin)
 		end
-	end)
-
-	Players.PlayerRemoving:Connect(function(player)
-		claimed[player] = nil
 	end)
 
 	print(`[BonusTvService] Hidden TV placed at {math.floor(origin.X)}, {math.floor(origin.Z)}.`)

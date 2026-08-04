@@ -26,7 +26,8 @@ local RollController = {
 
 local rollButton: TextButton
 local buttonSubtitle: TextLabel
-local paidButton: TextButton
+-- nil while monetisation is switched off.
+local paidButton: TextButton?
 local toast: TextLabel
 local card: Frame
 local cardRoll: TextLabel
@@ -282,7 +283,32 @@ local function buildResultCard(gui: ScreenGui)
 end
 
 -- Bottom-right stack, above the roll button: the paid upgrade and a toast for its feedback.
+--
+-- With monetisation off the button isn't created at all, and the toast takes its place in the
+-- stack. Building it hidden would leave a dead button one typo away from reappearing.
 local function buildPaidUpgrade(gui: ScreenGui)
+	local enabled = Config.Monetisation.Enabled
+
+	if not enabled then
+		toast = Instance.new("TextLabel")
+		toast.Name = "Toast"
+		toast.AnchorPoint = Vector2.new(1, 1)
+		toast.Position = UDim2.new(1, -24, 1, -120)
+		toast.Size = UDim2.fromOffset(320, 38)
+		toast.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
+		toast.BackgroundTransparency = 0.1
+		toast.BorderSizePixel = 0
+		toast.Font = Enum.Font.GothamMedium
+		toast.TextSize = 14
+		toast.TextColor3 = Color3.new(1, 1, 1)
+		toast.TextWrapped = true
+		toast.Text = ""
+		toast.Visible = false
+		toast.Parent = gui
+		roundCorner(toast, 8)
+		return
+	end
+
 	paidButton = Instance.new("TextButton")
 	paidButton.Name = "PaidUpgradeButton"
 	paidButton.AnchorPoint = Vector2.new(1, 1)
@@ -423,9 +449,11 @@ function RollController:Start()
 		end
 	end)
 
-	paidButton.MouseButton1Click:Connect(function()
-		Remotes.Events.RequestPaidUpgrade:FireServer()
-	end)
+	if paidButton then
+		paidButton.MouseButton1Click:Connect(function()
+			Remotes.Events.RequestPaidUpgrade:FireServer()
+		end)
+	end
 
 	Remotes.Events.RollResult.OnClientEvent:Connect(onRollResult)
 	Remotes.Events.DiceUpgradeOffered.OnClientEvent:Connect(onUpgradeOffered)
@@ -440,7 +468,7 @@ function RollController:Start()
 			buttonSubtitle.Text = `{rolls} {if rolls == 1 then "roll" else "rolls"} · press R`
 		end
 		-- Hide the paid upgrade once there's nothing left to buy.
-		if playerData.DiceTier then
+		if paidButton and playerData.DiceTier then
 			local atMax = playerData.DiceTier >= #DiceTiers.Tiers
 			paidButton.Visible = not atMax
 			toast.Position = UDim2.new(1, -24, 1, if atMax then -120 else -172)

@@ -58,7 +58,7 @@ window (**View → Output**):
 [ShopService] Built the shop (N parts).
 [BackroomsService] Built the Backrooms (N parts).
 [BonusTvService] Hidden TV placed at 97, 226.
-[Server] Started 7 service(s).
+[Server] Started 8 service(s).
 [Client] Started 3 controller(s).
 ```
 
@@ -123,6 +123,9 @@ asserts the invariants that would silently break the game if the balance data dr
   trusted
 - the die is a real die: opposite faces sum to 7 with exactly opposite normals, all six normals
   and surfaces are distinct, face *n* has *n* pips, and no pip sits outside its face
+- persistence settings are sane: the two stores have different names, autosave isn't frequent
+  enough to burn the write budget, saves retry, and the scoreboard page size is within
+  Roblox's 100-row cap
 - the bonus is worth the walk, every sound is set and looks like an asset reference, and the
   maze grid is big enough for the bonus room to exist outside the cleared area by the door
 - `GrantWithoutPaying` is off, so a build that hands out free dice upgrades can't ship
@@ -230,7 +233,12 @@ adjusting them by a delta, because the best TV may now be a different one entire
 
 ### Paying for an upgrade
 
-There's a **Upgrade dice · 25 R$** button, so you don't have to wait for a 6.
+**Currently switched off** via `Config.Monetisation.Enabled = false`, so there's no button on
+screen and the server refuses to prompt. The implementation stays put — flip that flag and paste
+a product id to bring it back. With it off the button isn't created at all rather than built
+hidden, so there's no dead control one typo away from reappearing.
+
+When on, there's an **Upgrade dice · 25 R$** button so you don't have to wait for a 6.
 
 **This needs setting up before it works.** The price is not in the code — it lives on a Roblox
 Developer Product:
@@ -299,6 +307,52 @@ Two things worth knowing if you edit it:
   existing `SpawnLocation` so players can't appear outside the shop — a baseplate template ships
   with one at the origin. With no baseplate at all (a place from `rojo build`) it lays pavement
   instead.
+
+### Saving and the scoreboard
+
+Progress persists to a DataStore, and the top 10 scores show on a lit board on the shop's
+right-hand wall.
+
+**Studio needs `Game Settings → Security → Enable Studio Access to API Services`.** Without it
+every DataStore call throws. That's handled rather than fatal — the game runs, saving is off, the
+board says *"leaderboard unavailable — API services off"*, and the player is told their session
+won't be saved. But nothing will persist until you turn it on.
+
+Two rules in [PlayerDataService.luau](src/server/services/PlayerDataService.luau) matter more
+than the rest:
+
+1. **A player's entry doesn't exist until the load finishes.** `RollService` already bails when
+   `Get()` returns nil, so a roll during the load is ignored rather than landing in a blank slate
+   that the load then overwrites.
+2. **A failed load marks the player unsaveable.** Note "failed" is not the same as "no save yet":
+   a first-time player saves normally, but a *DataStore error* means they run on defaults and are
+   never written back. Saving defaults over a live save would wipe a real collection, and they'd
+   have no idea until they noticed everything gone.
+
+Also:
+
+- `TotalValue` and `BestScore` are **not saved** — they're derived, and recomputed from the TV
+  list on load, so a corrupted total can't persist forever.
+- Everything loaded is range-checked and type-checked on the way in; anything unexpected falls
+  back to its default rather than propagating a bad value into the game.
+- `PendingUpgrade` is deliberately not saved. A pending offer means nothing across sessions.
+- Autosave every 120s, plus a save on leave, plus `BindToClose`. That last one saves **in
+  parallel**, because four sequential retrying saves could outlast the ~30 seconds Roblox gives
+  you on shutdown.
+
+**`BonusClaimed` had to become saved data** as part of this. The hidden TV is worth 30,000 and is
+one-time; with the claim tracked only in memory, adding persistence would have let anyone rejoin
+and collect it again on every visit.
+
+The scoreboard uses a **separate OrderedDataStore**, because a normal DataStore can't be sorted
+and an ordered one only holds integers. It's a projection of the real data, never the source — if
+it's wrong or wiped, nobody loses a TV. Publishing is throttled to the 60s refresh tick rather
+than fired per roll, which would burn the write budget with a full server in minutes.
+
+One subtlety in [ScoreboardService.luau](src/server/services/ScoreboardService.luau): a leaver's
+final total is published from a **cached** value, not from `Get()`. `PlayerDataService` clears its
+entry on `PlayerRemoving` too, and the two handlers run in whichever order the services happened
+to start — reading through `Get()` there is a race that would sometimes publish nothing.
 
 ### The hidden bonus TV
 
@@ -466,6 +520,7 @@ the button but can't choose its own outcome, and a 1.5s cooldown is enforced ser
 | [BackroomsService.luau](src/server/services/BackroomsService.luau) | Builds the Backrooms maze outside the shopfront |
 | [MonetisationService.luau](src/server/services/MonetisationService.luau) | Paid dice upgrades and receipt handling |
 | [BonusTvService.luau](src/server/services/BonusTvService.luau) | The hidden Backrooms TV, its trigger and the fireworks |
+| [ScoreboardService.luau](src/server/services/ScoreboardService.luau) | The top-10 wall board and its OrderedDataStore |
 | [PlayerDataService.luau](src/server/services/PlayerDataService.luau) | Owns dice tier + collection; the only thing that mutates player state |
 | [RollService.luau](src/server/services/RollService.luau) | Rolls, awards, cooldown, upgrade offers |
 | [TvDisplayService.luau](src/server/services/TvDisplayService.luau) | Four podiums, built in code, showing each player's best TV |
