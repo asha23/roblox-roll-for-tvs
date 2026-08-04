@@ -160,8 +160,9 @@ end
 local function buildRollButton(gui: ScreenGui)
 	rollButton = Instance.new("TextButton")
 	rollButton.Name = "RollButton"
-	rollButton.AnchorPoint = Vector2.new(0.5, 1)
-	rollButton.Position = UDim2.new(0.5, 0, 1, -46)
+	-- Bottom right, clear of the middle of the screen.
+	rollButton.AnchorPoint = Vector2.new(1, 1)
+	rollButton.Position = UDim2.new(1, -24, 1, -40)
 	rollButton.Size = UDim2.fromOffset(240, 68)
 	rollButton.BackgroundColor3 = Color3.fromRGB(64, 132, 255)
 	rollButton.BorderSizePixel = 0
@@ -187,8 +188,9 @@ end
 local function buildResultCard(gui: ScreenGui)
 	card = Instance.new("Frame")
 	card.Name = "ResultCard"
-	card.AnchorPoint = Vector2.new(0.5, 0.5)
-	card.Position = UDim2.fromScale(0.5, 0.38)
+	-- Bottom left, diagonally opposite the roll button so neither sits over the shop.
+	card.AnchorPoint = Vector2.new(0, 1)
+	card.Position = UDim2.new(0, 24, 1, -24)
 	card.Size = UDim2.fromOffset(360, 186)
 	card.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
 	card.BackgroundTransparency = 0.1
