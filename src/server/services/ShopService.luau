@@ -26,9 +26,11 @@ local WALL = 2 -- wall thickness
 local DEPTH = SHOP.FrontZ - SHOP.BackZ
 local WIDTH = SHOP.HalfWidth * 2
 
-local FLOOR = Color3.fromRGB(222, 224, 228)
-local FLOOR_ALT = Color3.fromRGB(198, 202, 210)
-local WALL_COLOUR = Color3.fromRGB(238, 240, 244)
+-- Mid-tones, not near-whites. Pale marble under a dozen ceiling lights blew out to a flat
+-- white sheet and left the UI text with nothing to sit against.
+local FLOOR = Color3.fromRGB(150, 154, 163)
+local FLOOR_ALT = Color3.fromRGB(132, 136, 146)
+local WALL_COLOUR = Color3.fromRGB(176, 180, 190)
 local TRIM = Color3.fromRGB(38, 44, 58)
 local ACCENT = Color3.fromRGB(64, 132, 255)
 local WOOD = Color3.fromRGB(120, 92, 62)
@@ -130,7 +132,7 @@ local function buildWalls()
 		"Ceiling",
 		Vector3.new(WIDTH + WALL * 2, WALL, DEPTH + WALL * 2),
 		Vector3.new(0, SHOP.FloorY + SHOP.WallHeight + WALL / 2, centreZ()),
-		Color3.fromRGB(228, 230, 236)
+		Color3.fromRGB(158, 162, 172)
 	)
 	ceiling.Material = Enum.Material.Concrete
 
@@ -240,14 +242,14 @@ local function buildCeilingLights()
 					"LightPanel",
 					Vector3.new(14, 0.4, 6),
 					Vector3.new(x, SHOP.FloorY + SHOP.WallHeight - 0.2, z),
-					Color3.fromRGB(255, 252, 238)
+					Color3.fromRGB(226, 224, 212)
 				)
 			)
 			panel.Material = Enum.Material.Neon
 
 			local lamp = Instance.new("PointLight")
-			lamp.Brightness = 1.4
-			lamp.Range = 42
+			lamp.Brightness = 0.55
+			lamp.Range = 30
 			lamp.Color = Color3.fromRGB(255, 250, 235)
 			-- Shadows off on every decorative light in here. Future lighting makes each
 			-- shadow-casting light expensive, and there are two dozen of them — the room

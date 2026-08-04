@@ -47,27 +47,46 @@ local rollToken = 0
 -- gap would be silently dropped by the server.
 local lastRequestClock = 0
 
+-- The bottom-left column: result card on the floor, upgrade prompt stacked on top of it.
+local CARD_MARGIN = 24
+local CARD_HEIGHT = 186
+local CARD_WIDTH = 360
+
 local function roundCorner(instance: Instance, radius: number)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, radius)
 	corner.Parent = instance
 end
 
+-- Lifts a colour until it's legible on the dark card. TV screen colours run from near-black
+-- (score 1) to bright neon (score 30), and the dark end was unreadable as text.
+local function readable(colour: Color3): Color3
+	local luminance = 0.2126 * colour.R + 0.7152 * colour.G + 0.0722 * colour.B
+	if luminance >= 0.55 then
+		return colour
+	end
+	local lift = math.clamp((0.55 - luminance) / math.max(1 - luminance, 0.01), 0, 0.85)
+	return colour:Lerp(Color3.new(1, 1, 1), lift)
+end
+
 local function setButtonEnabled(enabled: boolean)
 	rollButton.AutoButtonColor = enabled
 	rollButton.BackgroundColor3 = if enabled
 		then Color3.fromRGB(64, 132, 255)
-		else Color3.fromRGB(58, 62, 72)
-	rollButton.TextTransparency = if enabled then 0 else 0.35
+		else Color3.fromRGB(96, 102, 116)
+	-- Never fade the label. The old disabled state was white at 35% transparency on a dark
+	-- grey fill, which came out as good as unreadable.
+	rollButton.TextTransparency = 0
+	rollButton.TextColor3 = if enabled then Color3.new(1, 1, 1) else Color3.fromRGB(216, 220, 228)
 end
 
 local function showCard()
 	card.Visible = true
-	card.Size = UDim2.fromOffset(300, 150)
+	card.Size = UDim2.fromOffset(CARD_WIDTH - 60, CARD_HEIGHT - 36)
 	TweenService:Create(
 		card,
 		TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Size = UDim2.fromOffset(360, 186) }
+		{ Size = UDim2.fromOffset(CARD_WIDTH, CARD_HEIGHT) }
 	):Play()
 end
 
@@ -97,7 +116,8 @@ local function onRollResult(result: any)
 	local tv = result.Tv
 	if tv then
 		cardTvName.Text = tv.Name
-		cardTvName.TextColor3 = tv.Screen
+		-- Lifted, not raw: the low-score screen colours are near-black and vanished here.
+		cardTvName.TextColor3 = readable(tv.Screen)
 		cardDetail.Text = `{tv.Rarity} · {TvCatalog.formatValue(tv.Value)} · score {result.Score}`
 	end
 
@@ -178,9 +198,12 @@ local function buildRollButton(gui: ScreenGui)
 	buttonSubtitle.Position = UDim2.new(0.5, 0, 1, 6)
 	buttonSubtitle.Size = UDim2.fromOffset(260, 20)
 	buttonSubtitle.BackgroundTransparency = 1
-	buttonSubtitle.Font = Enum.Font.Gotham
-	buttonSubtitle.TextSize = 13
-	buttonSubtitle.TextColor3 = Color3.fromRGB(160, 168, 180)
+	buttonSubtitle.Font = Enum.Font.GothamMedium
+	buttonSubtitle.TextSize = 14
+	-- White on a black stroke. This label sits directly on the shop floor with no panel
+	-- behind it, so mid-grey text disappeared against the pale marble.
+	buttonSubtitle.TextColor3 = Color3.new(1, 1, 1)
+	buttonSubtitle.TextStrokeTransparency = 0.15
 	buttonSubtitle.Text = "click, or press R"
 	buttonSubtitle.Parent = rollButton
 end
@@ -190,8 +213,8 @@ local function buildResultCard(gui: ScreenGui)
 	card.Name = "ResultCard"
 	-- Bottom left, diagonally opposite the roll button so neither sits over the shop.
 	card.AnchorPoint = Vector2.new(0, 1)
-	card.Position = UDim2.new(0, 24, 1, -24)
-	card.Size = UDim2.fromOffset(360, 186)
+	card.Position = UDim2.new(0, CARD_MARGIN, 1, -CARD_MARGIN)
+	card.Size = UDim2.fromOffset(CARD_WIDTH, CARD_HEIGHT)
 	card.BackgroundColor3 = Color3.fromRGB(16, 18, 24)
 	card.BackgroundTransparency = 0.1
 	card.BorderSizePixel = 0
@@ -233,62 +256,60 @@ local function buildResultCard(gui: ScreenGui)
 end
 
 local function buildUpgradeModal(gui: ScreenGui)
+	-- Sits directly above the result card in the same bottom-left column, so you can see
+	-- both the TV you just won and the offer without anything covering the shop. There's
+	-- deliberately no full-screen dim any more: it darkened the whole view, and the roll
+	-- button is already blocked by the `modal.Visible` check plus the server's
+	-- PendingUpgrade flag.
 	modal = Instance.new("Frame")
-	modal.Name = "UpgradeModal"
-	modal.Size = UDim2.fromScale(1, 1)
-	modal.BackgroundColor3 = Color3.new(0, 0, 0)
-	modal.BackgroundTransparency = 0.45
+	modal.Name = "UpgradePrompt"
+	modal.AnchorPoint = Vector2.new(0, 1)
+	modal.Position = UDim2.new(0, CARD_MARGIN, 1, -(CARD_MARGIN + CARD_HEIGHT + 10))
+	modal.Size = UDim2.fromOffset(360, 176)
+	modal.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+	modal.BackgroundTransparency = 0.05
 	modal.BorderSizePixel = 0
-	-- Active swallows clicks so the player can't reach the roll button behind it.
 	modal.Active = true
 	modal.Visible = false
 	modal.Parent = gui
-
-	local panel = Instance.new("Frame")
-	panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	panel.Position = UDim2.fromScale(0.5, 0.5)
-	panel.Size = UDim2.fromOffset(400, 220)
-	panel.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
-	panel.BorderSizePixel = 0
-	panel.Parent = modal
-	roundCorner(panel, 16)
+	roundCorner(modal, 14)
 
 	modalText = Instance.new("TextLabel")
-	modalText.Position = UDim2.new(0, 20, 0, 22)
-	modalText.Size = UDim2.new(1, -40, 0, 116)
+	modalText.Position = UDim2.new(0, 16, 0, 16)
+	modalText.Size = UDim2.new(1, -32, 0, 92)
 	modalText.BackgroundTransparency = 1
 	modalText.Font = Enum.Font.Gotham
-	modalText.TextSize = 19
+	modalText.TextSize = 17
 	modalText.TextWrapped = true
 	modalText.RichText = true
 	modalText.TextColor3 = Color3.new(1, 1, 1)
 	modalText.Text = ""
-	modalText.Parent = panel
+	modalText.Parent = modal
 
 	acceptButton = Instance.new("TextButton")
 	acceptButton.AnchorPoint = Vector2.new(0, 1)
-	acceptButton.Position = UDim2.new(0, 20, 1, -20)
-	acceptButton.Size = UDim2.fromOffset(174, 48)
+	acceptButton.Position = UDim2.new(0, 16, 1, -16)
+	acceptButton.Size = UDim2.fromOffset(156, 44)
 	acceptButton.BackgroundColor3 = Color3.fromRGB(72, 196, 120)
 	acceptButton.BorderSizePixel = 0
 	acceptButton.Font = Enum.Font.GothamBold
 	acceptButton.TextSize = 17
 	acceptButton.TextColor3 = Color3.new(1, 1, 1)
 	acceptButton.Text = "Upgrade!"
-	acceptButton.Parent = panel
+	acceptButton.Parent = modal
 	roundCorner(acceptButton, 10)
 
 	declineButton = Instance.new("TextButton")
 	declineButton.AnchorPoint = Vector2.new(1, 1)
-	declineButton.Position = UDim2.new(1, -20, 1, -20)
-	declineButton.Size = UDim2.fromOffset(174, 48)
-	declineButton.BackgroundColor3 = Color3.fromRGB(64, 68, 80)
+	declineButton.Position = UDim2.new(1, -16, 1, -16)
+	declineButton.Size = UDim2.fromOffset(156, 44)
+	declineButton.BackgroundColor3 = Color3.fromRGB(84, 90, 104)
 	declineButton.BorderSizePixel = 0
 	declineButton.Font = Enum.Font.GothamBold
-	declineButton.TextSize = 17
+	declineButton.TextSize = 16
 	declineButton.TextColor3 = Color3.new(1, 1, 1)
 	declineButton.Text = "Keep this dice"
-	declineButton.Parent = panel
+	declineButton.Parent = modal
 	roundCorner(declineButton, 10)
 end
 
@@ -328,7 +349,8 @@ function RollController:Start()
 
 	Remotes.Events.DataChanged.OnClientEvent:Connect(function(playerData)
 		if type(playerData) == "table" and playerData.Rolls then
-			buttonSubtitle.Text = `{playerData.Rolls} rolls · click, or press R`
+			local rolls = playerData.Rolls
+			buttonSubtitle.Text = `{rolls} {if rolls == 1 then "roll" else "rolls"} · press R`
 		end
 	end)
 end
